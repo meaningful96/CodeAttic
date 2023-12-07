@@ -23,6 +23,7 @@ python3 -u main.py \
 --use-link-graph \
 --train-path "${DATA_DIR}/train.txt.json" \
 --valid-path "${DATA_DIR}/valid.txt.json" \
+--appearance-path "${DATA_DIR}/log/appearance.json" \
 --task ${TASK} \
 --batch-size 1024 \
 --print-freq 20 \
@@ -30,6 +31,10 @@ python3 -u main.py \
 --use-amp \
 --use-self-negative \
 --pre-batch 0 \
+--subgraph-size 16 \
+--k-steps 5 \
+--num-iter 200 \
+--num-process 40 \
 --finetune-t \
 --epochs 50 \
 --workers 4 \

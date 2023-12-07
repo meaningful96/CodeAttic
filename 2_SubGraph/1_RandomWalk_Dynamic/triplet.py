@@ -124,8 +124,6 @@ class LinkGraph:
 def reverse_triplet(obj):
     return {
         'head_id': obj['tail_id'],
-        'head': obj['tail'],
         'relation': 'inverse {}'.format(obj['relation']),
         'tail_id': obj['head_id'],
-        'tail': obj['head']
     }

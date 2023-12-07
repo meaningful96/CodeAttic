@@ -132,6 +132,17 @@ class Dataset(torch.utils.data.dataset.Dataset):
     def __getitem__(self, index):
         return self.examples[index].vectorize()
 
+class Custom_Dataset(torch.utils.data.dataset.Dataset):
+    
+    def __init__(self, data):
+        self.examples = load_custom_data(data)
+
+    def __len__(self):
+        return len(self.examples)
+
+    def __getitem__(self, index):
+        return self.examples[index].vectorize()
+        
 
 def load_data(path: str,
               add_forward_triplet: bool = True,
@@ -155,6 +166,21 @@ def load_data(path: str,
 
     return examples
 
+def load_custom_data(data,
+                     add_forward_triplet: bool = True,
+                     add_backward_triplet: bool = True) -> List[Example]:
+    logger.info("Loading RandomWalk Subgraph Data")
+    cnt = len(data)
+    examples = []
+    for i in range(cnt):
+        obj = data[i]
+        if add_forward_triplet:
+            examples.append(Example(**obj))
+        if add_backward_triplet:
+            examples.append(Example(**reverse_triplet(obj)))
+        data[i] = None
+
+    return examples
 
 def collate(batch_data: List[dict]) -> dict:
     hr_token_ids, hr_mask = to_indices_and_mask(
@@ -170,14 +196,15 @@ def collate(batch_data: List[dict]) -> dict:
     tail_token_type_ids = to_indices_and_mask(
         [torch.LongTensor(ex['tail_token_type_ids']) for ex in batch_data],
         need_mask=False)
-
+    
+    
     head_token_ids, head_mask = to_indices_and_mask(
         [torch.LongTensor(ex['head_token_ids']) for ex in batch_data],
         pad_token_id=get_tokenizer().pad_token_id)
     head_token_type_ids = to_indices_and_mask(
         [torch.LongTensor(ex['head_token_type_ids']) for ex in batch_data],
         need_mask=False)
-
+    
     batch_exs = [ex['obj'] for ex in batch_data]
     batch_dict = {
         'hr_token_ids': hr_token_ids,

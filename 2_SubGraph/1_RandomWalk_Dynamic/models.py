@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from transformers import AutoModel, AutoConfig
 
 from triplet_mask import construct_mask
-
+from config import args
 
 def build_model(args) -> nn.Module:
     return CustomBertModel(args)
@@ -19,6 +19,7 @@ class ModelOutput:
     logits: torch.tensor
     labels: torch.tensor
     inv_t: torch.tensor
+    inv_tt: torch.tensor
     hr_vector: torch.tensor
     tail_vector: torch.tensor
 
@@ -29,6 +30,7 @@ class CustomBertModel(nn.Module, ABC):
         self.args = args
         self.config = AutoConfig.from_pretrained(args.pretrained_model)
         self.log_inv_t = torch.nn.Parameter(torch.tensor(1.0 / args.t).log(), requires_grad=args.finetune_t)
+        self.log_inv_tt = torch.nn.Parameter(torch.tensor(1.0 / args.tt).log(), requires_grad=args.finetune_t)
         self.add_margin = args.additive_margin
         self.batch_size = args.batch_size
         self.pre_batch = args.pre_batch
@@ -42,6 +44,7 @@ class CustomBertModel(nn.Module, ABC):
 
         self.hr_bert = AutoModel.from_pretrained(args.pretrained_model)
         self.tail_bert = deepcopy(self.hr_bert)
+        self.subgraph = args.subgraph_size * 2    
 
     def _encode(self, encoder, token_ids, mask, token_type_ids):
         outputs = encoder(input_ids=token_ids,
@@ -72,12 +75,12 @@ class CustomBertModel(nn.Module, ABC):
                                    token_ids=tail_token_ids,
                                    mask=tail_mask,
                                    token_type_ids=tail_token_type_ids)
-
+        
         head_vector = self._encode(self.tail_bert,
                                    token_ids=head_token_ids,
                                    mask=head_mask,
                                    token_type_ids=head_token_type_ids)
-
+        
         # DataParallel only support tensor/dict
         return {'hr_vector': hr_vector,
                 'tail_vector': tail_vector,
@@ -87,11 +90,15 @@ class CustomBertModel(nn.Module, ABC):
         hr_vector, tail_vector = output_dict['hr_vector'], output_dict['tail_vector']
         batch_size = hr_vector.size(0)
         labels = torch.arange(batch_size).to(hr_vector.device)
-
+        
         logits = hr_vector.mm(tail_vector.t())
         if self.training:
             logits -= torch.zeros(logits.size()).fill_diagonal_(self.add_margin).to(logits.device)
-        logits *= self.log_inv_t.exp()
+        hard = torch.ones(logits.size()).to(logits.device)
+        for i in range(0, logits.size(0), self.subgraph):
+            hard[i:i+self.subgraph, i:i+self.subgraph] = self.log_inv_t.exp()
+        hard[hard != self.log_inv_t.exp()] = self.log_inv_tt.exp()
+        logits *= hard
 
         triplet_mask = batch_dict.get('triplet_mask', None)
         if triplet_mask is not None:
@@ -101,16 +108,19 @@ class CustomBertModel(nn.Module, ABC):
             pre_batch_logits = self._compute_pre_batch_logits(hr_vector, tail_vector, batch_dict)
             logits = torch.cat([logits, pre_batch_logits], dim=-1)
 
+
+        
         if self.args.use_self_negative and self.training:
             head_vector = output_dict['head_vector']
-            self_neg_logits = torch.sum(hr_vector * head_vector, dim=1) * self.log_inv_t.exp()
+            self_neg_logits = torch.sum(hr_vector * head_vector, dim=1) * self.log_inv_tt.exp()
             self_negative_mask = batch_dict['self_negative_mask']
             self_neg_logits.masked_fill_(~self_negative_mask, -1e4)
             logits = torch.cat([logits, self_neg_logits.unsqueeze(1)], dim=-1)
-
+        
         return {'logits': logits,
                 'labels': labels,
                 'inv_t': self.log_inv_t.detach().exp(),
+                'inv_tt': self.log_inv_tt.detach().exp(),
                 'hr_vector': hr_vector.detach(),
                 'tail_vector': tail_vector.detach()}
 

@@ -33,14 +33,18 @@ parser.add_argument('--t', default=0.05, type=float,
                     help='temperature parameter')
 
 ## added by youmin
-parser.add_argument('--tt', default=0.025, type=float,
+parser.add_argument('--appearance-path', default='', type=str, metavar='N',
+                    help='path to store appearance data')
+parser.add_argument('--tt', default=0.034, type=float,
                     help='temperature parameter for hard negative')
 parser.add_argument('--k-steps', default=5, type=int,
                     help='step size for randomwalk')
-parser.add_argument('--n-iter', default=100, type=int,
+parser.add_argument('--num-iter', default=100, type=int,
                     help='the number of iterations for randomwalk algorithm')
 parser.add_argument('--subgraph-size', default=16, type=int,
                     help='Subgraph Size')
+parser.add_argument('--num-process', default=30, type=int,
+                    help='process number')
 
 parser.add_argument('--use-link-graph', action='store_true',
                     help='use neighbors from link graph as context')
