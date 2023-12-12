@@ -2,7 +2,7 @@ from collections import defaultdict, deque
 from multiprocessing import Pool, Manager
 from typing import List, Dict, Tuple
 from logger_config import logger
-# from config import args
+#from config import args
 
 import multiprocessing
 import datetime
@@ -36,12 +36,25 @@ def build_graph(train_path:str):
 
     return Graph, diGraph, appearance, entities
 
+def rearrange_list(input_list):
+    output_list = [(h, r, t) for (t, r, h) in input_list]
+    return output_list
+
+def Shuffle(input_list):
+    out_list = []
+    for sublist in input_list:
+        random.shuffle(sublist)
+        out_list.append(sublist)
+    return out_list
+
 
 class RandomWalk:
     def __init__(self, train_path:str):
         self.Graph, self.diGraph, self.appearance, self.entities = build_graph(train_path)
         logger.info("Done building Link Graph with {} nodes".format(len(self.Graph)))
         logger.info("Done building Directed Graph with {} nodes".format(len(self.diGraph)))
+
+        self.train_dataset = json.load(open(train_path, 'r', encoding='utf-8'))
 
     def get_neighbor_ids(self, tail_id: str, n_hops: int) -> List[str]:
         if n_hops <= 0:
@@ -78,291 +91,250 @@ class RandomWalk:
         all_entities = list(self.Graph.keys())
         entities = list(self.diGraph.keys())
         candidates = list(set(all_entities) - set(entities))
-        center_length = len(self.bfs(random.choice(list(self.diGraph.keys()))))  
+        center_triples = list(random.sample(entities, 10))
+        
+        tmp = []
+        for ex in center_triples:
+            length = len(self.bfs(ex))
+            tmp.append(length)
+        center_length = max(tmp)
+
         fully_disconnected = []
         for entity in candidates:
             bfs = self.bfs(entity)  
-            if len(bfs.keys()) != center_length:
+            if len(bfs) != center_length:
                 fully_disconnected.append(entity)
         disconnected_triple = []
         for entity in fully_disconnected:
-            disconnected_triple.extend(list(self.diGraph[entity]))  
+            if entity in self.diGraph.keys():
+                disconnected_triple.extend(list(self.diGraph[entity]))
+            if entity not in self.diGraph.keys():
+                if entity in self.Graph.keys():
+                    cand = list(self.Graph[entity])
+                    disconnected_triple.extend(rearrange_list(cand))
 
         return fully_disconnected, disconnected_triple
 
-    def randomwalk(self, head_id:str, relation:str, tail_id:str, k_steps:int, num_iter:int) -> List[list]:
+    def randomwalk(self, head_id:str, relation:str, tail_id:str, k_steps:int, num_iter:int, subgraph_size) -> List[list]:
         graph = self.Graph
         directed_graph = self.diGraph
-        all_path = []
-        center_triple = {'head_id': head_id, 'relation': relation, 'tail_id': tail_id}
-        
+        center_triple = (head_id, relation, tail_id)
+        total_path = []    
+
+        all_path_head = []
         ## for 'head' with center triple
         for _ in range(num_iter // 2):
             path = []
             current_entity = head_id
             path.append(center_triple)
+           
             for _ in range(k_steps):
                 append = False
                 neighbors = self.get_neighbor_ids(current_entity, 1)
+                # neighbors = [n for n in neighbors if n != tail_id]
                 candidate = random.choice(list(neighbors))
+                
                 if current_entity in directed_graph.keys():
                     for triple in directed_graph[current_entity]:
                         if triple[2] == candidate:
-                            path.append({'head_id': triple[0], 'relation': triple[1], 'tail_id': triple[2]})
+                            path.append(triple)
                             append = True
                     if append == False:
                         for triple in directed_graph[candidate]:
                             if triple[2] == current_entity:
-                                path.append({'head_id': triple[0], 'relation': triple[1], 'tail_id': triple[2]})   
+                                path.append(triple)   
                                 append = True
                 
                 if current_entity not in directed_graph.keys():
-                    for triple in graph[current_entity]:
-                        if triple[2] == candidate:
-                            path.append({'head_id': triple[2], 'relation': triple[1], 'tail_id': triple[0]})
+                    for triple in directed_graph[candidate]:
+                        if triple[2] == current_entity:
+                            path.append(triple)
                             append = True
-
                 assert append == True, "No triple is appended!!"
                 current_entity = candidate
-            unique_set = {frozenset(d.items()) for d in path}
-            unique_path = [dict(fs) for fs in unique_set]
 
-            # Ordering
-            unique_path = [{'head_id': d['head_id'], 'relation': d['relation'], 'tail_id': d['tail_id']} for d in
-                           unique_path]
-            all_path.append(unique_path)
-                
+            x = random.random()
+            all_path_head.extend(path)         
+        all_path_head = list(set(all_path_head))
+
+        if len(all_path_head) < (subgraph_size // 2):
+            random_head = random.sample(self.train_dataset, (subgraph_size//2 - len(all_path_head)))
+            random_head = [(ex['head_id'], ex['relation'], ex['tail_id']) for ex in random_head]
+            all_path_head.extend(random_head)
+        total_path.append(all_path_head)
+
+        all_path_tail = []
         ## for 'tail' with center triple
         for _ in range(num_iter // 2):
             path = []
             current_entity = tail_id
             path.append(center_triple)
+           
             for _ in range(k_steps):
                 append = False
                 neighbors = self.get_neighbor_ids(current_entity, 1)
+                # neighbors = [n for n in neighbors if n != head_id]
                 candidate = random.choice(list(neighbors))
+                
                 if current_entity in directed_graph.keys():
                     for triple in directed_graph[current_entity]:
                         if triple[2] == candidate:
-                            path.append({'head_id': triple[0], 'relation': triple[1], 'tail_id': triple[2]})
+                            path.append(triple)
                             append = True
                     if append == False:
                         for triple in directed_graph[candidate]:
                             if triple[2] == current_entity:
-                                path.append({'head_id': triple[0], 'relation': triple[1], 'tail_id': triple[2]})   
+                                path.append(triple)   
                                 append = True
                 
                 if current_entity not in directed_graph.keys():
-                    for triple in graph[current_entity]:
-                        if triple[2] == candidate:
-                            path.append({'head_id': triple[2], 'relation': triple[1], 'tail_id': triple[0]})
+                    for triple in directed_graph[candidate]:
+                        if triple[2] == current_entity:
+                            path.append(triple)
                             append = True
-
                 assert append == True, "No triple is appended!!"
                 current_entity = candidate
-            unique_set = {frozenset(d.items()) for d in path}
-            unique_path = [dict(fs) for fs in unique_set]
 
-            # Ordering
-            unique_path = [{'head_id': d['head_id'], 'relation': d['relation'], 'tail_id': d['tail_id']} for d in
-                           unique_path]
-            all_path.append(unique_path)
+            x = random.random()
+            all_path_tail.extend(path)
+         
+        all_path_tail = list(set(all_path_tail))
+        if len(all_path_tail) < (subgraph_size // 2):
+            random_tail = random.sample(self.train_dataset, (subgraph_size//2 - len(all_path_tail)))
+            random_tail = [(ex['head_id'], ex['relation'], ex['tail_id']) for ex in random_tail]
+            all_path_tail.extend(random_tail)
+   
+        total_path.append(all_path_tail)
 
-        return all_path
-
-    def Combinating_Subgraph(self, path_list, subgraph_size):
-        path_list = path_list
-        random.shuffle(path_list)
-        appearance = self.appearance
-        subgraph = []
-        while len(subgraph) < subgraph_size:
-            for path in path_list:
-               subgraph.extend(path)
-               for ex in path:
-                   key = (ex['head_id'], ex['relation'], ex['tail_id'])
-                   if key in appearance:
-                       appearance[key] += 1
-        subgraph = subgraph[:subgraph_size]
-        
-        return subgraph, appearance
-
-def Making_Subgraph(path_dict, candidates,subgraph_size):
-    """
-    # path_dict: result of randomwalk
-    # candidates: triples list
-    """
+        return total_path
+#"""    
+def Making_Subgraph(path_dict, candidates, subgraph_size, appearance):
     total_subgraph = []
-    subgraph = []
     for triple in candidates:
-        path_list = path_dict[triple] # List(List1, List2, List3, ...)
-        random.shuffle(path_list)
-        while len(subgraph) < subgraph_size:
-            for path in path_list:
-                subgraph.extend(path)
-        subgraph = subgraph[:subgraph_size]
+        path_list = path_dict[triple]
+        shuffled_paths = Shuffle(path_list)
+        subgraph = []
+        # print(len(path_list[0]), len(path_list[1]))
+        head_subgraph = random.sample(path_list[0], subgraph_size//2)
+        tail_subgraph = random.sample(path_list[1], subgraph_size//2)
+        
+        subgraph.extend(head_subgraph)
+        subgraph.extend(tail_subgraph)
+        assert subgraph_size == (len(head_subgraph) + len(tail_subgraph))
         total_subgraph.extend(subgraph)
     
-    return total_subgraph
+    for example in total_subgraph:
+        appearance[example] += 1
 
-def process_example(example, obj, k_steps, num_iter, disconnected_triple):
-    head_id, relation, tail_id = example['head_id'], example['relation'], example['tail_id']
+    total_subgraph = [{'head_id': head, 'relation': rel, 'tail_id': tail}
+                      for head, rel, tail in total_subgraph]
+    return total_subgraph, appearance
+    
 
-    # Skip disconnected triples
-    if (head_id, relation, tail_id) in disconnected_triple:
-        return None
+#"""
 
-    all_path = obj.randomwalk(head_id, relation, tail_id, k_steps, num_iter)
-
-    return (head_id, relation, tail_id), all_path
-
-def generate_paths_for_disconnected(example, obj, k_steps, num_iter, disconnected_triple):
-    head_id, relation, tail_id = example[0], example[1], example[2]
-
+def path_for_disconnected(data, triple, k_steps, num_iter):
     all_path = []
-    for i in range(num_iter):
-        path = [{'head_id': head_id, 'relation': relation, 'tail_id': tail_id}]
-        tmp = list(random.sample(disconnected_triple, k_steps-1))
-        for ex in tmp:
-            path.append({'head_id': ex[0], 'relation': ex[1], 'tail_id': ex[2]})
-        all_path.append(path)
 
-    return (head_id, relation, tail_id), all_path
+    ## for head
+    path_head = []
+    for i in range(num_iter//2):
+        path = []
+        sample = random.sample(data, k_steps)
+        for ex in data:
+            path.append((ex['head_id'], ex['relation'], ex['tail_id']))
+        path.append(triple)
+        path_head.extend(path)
+    all_path_head = list(set(path_head))
 
-def process_chunk(chunk, obj, k_steps, num_iter, disconnected_triple):
-    results = []
-    for example in chunk:
-        result = process_example(example, obj, k_steps, num_iter, disconnected_triple)
-        if result is not None:
-            results.append(result)
+    ## for tail
+    path_tail = []
+    for i in range(num_iter//2):
+        path = []
+        sample = random.sample(data, k_steps)
+        for ex in data:
+            path.append((ex['head_id'], ex['relation'], ex['tail_id']))
+        path.append(triple)
+        path_tail.extend(path)
+    all_path_tail = list(set(path_tail))    
 
-    return results
+    all_path.append(all_path_head)
+    all_path.append(all_path_tail)
 
-def Path_Dictionary(train_path, k_steps, num_iter, obj, num_process=40):
+    return all_path
+
+"""
+# Single CPU
+
+def Path_Dictionary(train_path, k_steps, num_iter, obj):
     data = json.load(open(train_path, 'r', encoding='utf-8'))
     triple_dict = defaultdict(list)
+    
     fully_disconnected, disconnected_triple = obj.Departing()
-
     logger.info("Departing Disconnected Triple Done!!")
-    with multiprocessing.Pool(processes=num_process) as pool:
-        # Process connected triples
-        results = pool.starmap(process_example, [(example, obj, k_steps, num_iter, disconnected_triple) for example in data])
-        for result in results:
-            if result is not None:
-                triple_dict[result[0]].extend(result[1])
-
-        # Process disconnected triples
-        disconnected_results = pool.starmap(generate_paths_for_disconnected, [(example, obj, k_steps, num_iter, disconnected_triple) for example in disconnected_triple])
-        for result in disconnected_results:
-            triple_dict[result[0]].extend(result[1])
+    
+    for example in data:
+        head_id, relation, tail_id = example['head_id'], example['relation'], example['tail_id']
+        center_triple = (head_id, relation, tail_id)
+        if center_triple in disconnected_triple:
+            all_path = path_for_disconnected(data, center_triple, k_steps, num_iter)
+            triple_dict[center_triple].extend(all_path)
+        if center_triple not in disconnected_triple:
+            all_path = obj.randomwalk(head_id, relation, tail_id, k_steps, num_iter)
+            triple_dict[center_triple].extend(all_path)
 
     return triple_dict
-
 """
-def Path_Dictionary(train_path, k_steps, num_iter, obj):
-    data = json.load(open(train_path, 'r', encoding = 'utf-8'))
-    triple_dict = defaultdict(list)
-    fully_disconnected, disconnected_triple = obj.Departing()
+def process_data_chunk(chunk, obj, k_steps, num_iter, disconnected_triple, subgraph_size):
+    chunk_triple_dict = defaultdict(list)
 
-    for example in data:
+    for example in chunk:
         head_id, relation, tail_id = example['head_id'], example['relation'], example['tail_id']
-        
-        # Skip disconnected triples
-        if (head_id, relation, tail_id) in disconnected_triple:
-            continue
+        center_triple = (head_id, relation, tail_id)
 
-        all_path = obj.randomwalk(head_id, relation, tail_id, k_steps, num_iter)
-        if ((head_id, relation, tail_id)) not in triple_dict:
-            triple_dict[(head_id, relation, tail_id)] = list()
-        triple_dict[(head_id, relation, tail_id)].extend(all_path)
-    
-    # Add disconnecte_triple path in triple_dict
-    for example in disconnected_triple:
-        head_id, relation, tail_id = example[0], example[1], example[2]
-        
-        if ((head_id, relation, tail_id)) not in triple_dict:
-            triple_dict[(head_id, relation, tail_id)] = list()
-        all_path = []
-        for i in range(num_iter):
-            path = []
-            path.append({'head_id': head_id, 'relation': relation, 'tail_id': tail_id})
-            tmp = list(random.sample(disconnected_triple, k_steps-1))
-            for ex in tmp:
-                path.append({'head_id': ex[0], 'relation':ex[1], 'tail_id': ex[2]})
-            all_path.append(path)
-        
-        triple_dict[(head_id, relation, tail_id)].extend(all_path)
+        if center_triple in disconnected_triple:
+            all_path = path_for_disconnected(chunk, center_triple, k_steps, num_iter)  # Note: pass chunk instead of the full data
+        else:
+            all_path = obj.randomwalk(head_id, relation, tail_id, k_steps, num_iter, subgraph_size)
 
+        chunk_triple_dict[center_triple].extend(all_path)
 
+    return chunk_triple_dict
+
+def Path_Dictionary(train_path, k_steps, num_iter, obj, num_process, subgraph_size):
+    data = json.load(open(train_path, 'r', encoding='utf-8'))
+    triple_dict = defaultdict(list)
+
+    fully_disconnected, disconnected_triple = obj.Departing()
+    logger.info("Departing Disconnected Triple Done!!")
+    logger.info("Fully Disconnected Entity: {}".format(len(fully_disconnected)))
+    logger.info("Fully Disconnected Triple: {}".format(len(disconnected_triple)))
+    chunk_size = len(data) // num_process
+    chunks = [data[i:i + chunk_size] for i in range(0, len(data), chunk_size)]
+
+    with multiprocessing.Pool(num_process) as pool:
+        results = pool.starmap(process_data_chunk, [(chunk, obj, k_steps, num_iter, disconnected_triple, subgraph_size) for chunk in chunks])
+
+    for chunk_result in results:
+        for key, value in chunk_result.items():
+            triple_dict[key].extend(value)
+    # print(triple_dict[('01768969', 'derivationally related form', '02636811')])
+    return triple_dict
 
 if __name__ == "__main__":
-    train_path = "/home/youminkk/Model_Experiment/2_SubGraph/1_RandomWalk_Dynamic/data/WN18RR/train.txt.json"
-    count = 0
-    triple_dict = defaultdict(list)
-    data = json.load(open(train_path, 'r', encoding='utf-8'))
+    train_path = '/home/youminkk/Model_Experiment/2_SubGraph/1_RandomWalk_Dynamic/data/WN18RR/train.txt.json'
     obj = RandomWalk(train_path)
-    fully_disconnected, disconnected_triple = obj.Departing()
-    print(disconnected_triple)
-    for example in data:
-        head_id, relation, tail_id = example['head_id'], example['relation'], example['tail_id']
-        all_path = obj.randomwalk(head_id, relation, tail_id, 5, 2)
-        if ((head_id, relation, tail_id)) not in triple_dict:
-            triple_dict[(head_id, relation, tail_id)] = list()
-        triple_dict[(head_id, relation, tail_id)].extend(all_path)
-        count += 1
-        if count == 3:
-            break
-    print(triple_dict)
-    for example in disconnected_triple:
-        count += 1
-        head_id, relation, tail_id = example[0], example[1], example[2]
-        
-        if ((head_id, relation, tail_id)) not in triple_dict:
-            triple_dict[(head_id, relation, tail_id)] = list()
-        all_path = []
-        for i in range(2):
-            path = []
-            tmp = list(random.sample(disconnected_triple, 5))
-            for ex in tmp:
-                path.append({'head_id': ex[0], 'relation':ex[1], 'tail_id': ex[2]})
-            all_path.append(path)
-        
-        triple_dict[(head_id, relation, tail_id)].extend(all_path)
-        if count == 6:
-            break
-    print("@"*200)
-    print(triple_dict)   
-"""
+    path_dict = Path_Dictionary(train_path, 5, 1000,obj, 30, 200)
+    keys = list(path_dict.keys())
 
+    outliers = []
 
-"""
-train_path = "/home/youminkk/Model_Experiment/2_SubGraph/1_RandomWalk_Dynamic/data/WN18RR/train.txt.json"
-k_steps = 5
-num_iter = 100
-obj = RandomWalk(train_path)  # Replace with your actual object
-num_process = 40
-s = time.time()
-result_dict = Path_Dictionary(train_path, k_steps, num_iter, obj)
-print(len(list(result_dict.keys())))
-print(len(result_dict.keys()))
-e = time.time()
-print(datetime.timedelta(seconds = e-s))
-# print(result_dict)
-
-data = json.load(open(train_path, 'r', encoding = 'utf-8'))
-print(len(data))
-x = []
-for ex in data:
-    h, r, t = ex['head_id'], ex['relation'], ex['tail_id']
-    x.append((h,r,t))
-
-res = list(result_dict.keys())
-x = set(x)
-res = set(res)
-difference_elements = res.symmetric_difference(x)
-num_different_elements = len(difference_elements)
-print("Number of different elements:", num_different_elements)
-print("Different elements:", difference_elements)    
-
-"""
-
-
+    for key in keys:
+        path_lists = path_dict[key]
+        x,y = len(path_lists[0]), len(path_lists[1])
+        if x < 100 or y < 100:
+            print(x,y)
+            outliers.append(key)
+    print(len(outliers))
+    print(outliers)
+ 

@@ -34,9 +34,9 @@ def report_num_trainable_parameters(model: torch.nn.Module) -> int:
     for name, p in model.named_parameters():
         if p.requires_grad:
             num_parameters += np.prod(list(p.size()))
-            logger.info('{}: {}'.format(name, np.prod(list(p.size()))))
+            # logger.info('{}: {}'.format(name, np.prod(list(p.size()))))
 
-    logger.info('Number of parameters: {}M'.format(num_parameters // 10**6))
+    # logger.info('Number of parameters: {}M'.format(num_parameters // 10**6))
     return num_parameters
 
 

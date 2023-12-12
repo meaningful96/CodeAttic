@@ -178,7 +178,7 @@ def load_custom_data(data,
             examples.append(Example(**obj))
         if add_backward_triplet:
             examples.append(Example(**reverse_triplet(obj)))
-        data[i] = None
+        
 
     return examples
 

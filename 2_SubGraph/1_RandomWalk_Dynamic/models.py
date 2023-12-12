@@ -91,18 +91,34 @@ class CustomBertModel(nn.Module, ABC):
         batch_size = hr_vector.size(0)
         labels = torch.arange(batch_size).to(hr_vector.device)
         
-        logits = hr_vector.mm(tail_vector.t())
-        if self.training:
-            logits -= torch.zeros(logits.size()).fill_diagonal_(self.add_margin).to(logits.device)
-        hard = torch.ones(logits.size()).to(logits.device)
-        for i in range(0, logits.size(0), self.subgraph):
-            hard[i:i+self.subgraph, i:i+self.subgraph] = self.log_inv_t.exp()
-        hard[hard != self.log_inv_t.exp()] = self.log_inv_tt.exp()
-        logits *= hard
+        if not args.validation: 
+            logits = hr_vector.mm(tail_vector.t())
+            if self.training:
+                logits -= torch.zeros(logits.size()).fill_diagonal_(self.add_margin).to(logits.device)
+            # logits *= self.log_inv_t.exp()
 
-        triplet_mask = batch_dict.get('triplet_mask', None)
-        if triplet_mask is not None:
-            logits.masked_fill_(~triplet_mask, -1e4)
+            hard = torch.ones(logits.size()).to(logits.device)
+            for i in range(0, logits.size(1), self.subgraph):
+                hard[i:(i+self.subgraph), i:(i+self.subgraph)] = self.log_inv_tt.exp()
+            hard[hard != self.log_inv_t.exp()] = self.log_inv_t.exp()
+
+            logits *= hard
+
+            triplet_mask = batch_dict.get('triplet_mask', None)
+            if triplet_mask is not None:
+                logits.masked_fill_(~triplet_mask, -1e4)
+        
+        
+        if args.validation:
+            logits = hr_vector.mm(tail_vector.t())
+            if self.training:
+                logits -= torch.zeros(logits.size()).fill_diagonal_(self.add_margin).to(logits.device)
+            logits *= self.log_inv_t.exp()
+
+            triplet_mask = batch_dict.get('triplet_mask', None)
+            if triplet_mask is not None:
+                logits.masked_fill_(~triplet_mask, -1e4)
+        
 
         if self.pre_batch > 0 and self.training:
             pre_batch_logits = self._compute_pre_batch_logits(hr_vector, tail_vector, batch_dict)

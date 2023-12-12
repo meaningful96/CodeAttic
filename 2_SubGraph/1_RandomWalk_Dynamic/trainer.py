@@ -36,7 +36,7 @@ class Trainer:
         # create model
         logger.info("=> creating model")
         self.model = build_model(self.args)
-        logger.info(self.model)
+        # logger.info(self.model)
         self._setup_training()
         self.k_steps = args.k_steps
         self.num_iter = args.num_iter
@@ -79,7 +79,7 @@ class Trainer:
         num_training_steps = args.epochs * self.step_size
         
         self.train_num_candidates = self.step_size * self.batch_size //(self.subgraph_size * 2) 
-        self.valid_num_candidates = valid_length // args.subgraph_size
+        self.valid_num_candidates = valid_length // (args.subgraph_size//4)
         args.warmup = min(args.warmup, num_training_steps // 10)
 
         logger.info("Step Size per Epoch: {}".format(self.step_size))
@@ -87,50 +87,74 @@ class Trainer:
         logger.info("Validation Candidates: {}".format(self.valid_num_candidates))
         logger.info('Total training steps: {}, warmup steps: {}'.format(num_training_steps, args.warmup))
 
-
         # Random Walk
+        """
+        Never activate the Random Walk Algorithm at validation Steps
+        """
         logger.info("Start RandomWalk!!")
-        self.train_data_dict = Path_Dictionary(args.train_path, self.k_steps, self.num_iter, train_obj)
-        self.valid_data_dict = Path_Dictionary(args.valid_path, self.k_steps, self.num_iter, valid_obj)        
-
+        self.train_data_dict = Path_Dictionary(args.train_path, self.k_steps, self.num_iter, train_obj, args.num_process, args.subgraph_size)
         self.train_initial_triples = random.sample(list(self.train_data_dict.keys()), self.train_num_candidates)
-        self.valid_initial_triples = random.sample(list(self.valid_data_dict.keys()), self.valid_num_candidates)
-
-        # train_dataset = Dataset(path=args.train_path, task=args.task)
-        # valid_dataset = Dataset(path=args.valid_path, task=args.task) if args.valid_path else None
+        
+        self.validation_dataset = json.load(open(args.valid_path, 'r', encoding='utf-8'))
+        # self.valid_data_dict = Path_Dictionary(args.valid_path, self.k_steps, self.num_iter, valid_obj, args.num_process, args.subgraph_size)       
+        # self.valid_initial_triples = random.sample(list(self.valid_data_dict.keys()), self.valid_num_candidates)
 
         self.scheduler = self._create_lr_scheduler(num_training_steps)
         self.best_metric = None
+        self.validation = args.validation
 
     def train_loop(self):
         if self.args.use_amp:
             self.scaler = torch.cuda.amp.GradScaler()
         
         train_appearance = self.train_appearance
-        valid_appearance = self.valid_appearance
+        # valid_appearance = self.valid_appearance
         start_train = time.time()
-        # torch.cuda.set_device(1)
+        appearance_train = train_appearance
         for epoch in range(self.args.epochs):
             start_epoch = time.time()
-            
             start_selection = time.time()
+            logger.info("Making Subgraph!!")
+            ss = time.time()
             if epoch == 0:
                 candidates_train = self.train_initial_triples
-                candidates_valid = self.valid_initial_triples
-                train_data = Making_Subgraph(self.train_data_dict, candidates_train, self.subgraph_size)
-                valid_data = Making_Subgraph(self.valid_data_dict, candidates_valid, self.subgraph_size)
-                # assert len(train_data) == self.batch_size
-                # assert len(valid_data) == self.batch_size
-                
+                train_data, counted_appearance_train = Making_Subgraph(self.train_data_dict, candidates_train, self.subgraph_size, appearance_train)
+                # valid_data, counted_appearance_valid = Making_Subgraph(self.valid_data_dict, candiadtes_valid, self.subgraph_size//4, appearance_valid)    
+
+                start_count = time.time()
+                sorted_candidates_train = sorted(counted_appearance_train.items(), key=lambda x: x[1]) # key-value. x[1] -> sorted by value
+                new_candidates_train = sorted_candidates_train[:self.train_num_candidates]
+                candidates_train = [item[0] for item in new_candidates_train]
+
+                # print(candidates_train)
+                end_count = time.time()
+                print("Time for Counting = '{}'".format(datetime.timedelta(seconds = end_count - start_count)))    
+                appearance_train = counted_appearance_train
+                # appearance_valid = counted_appearance_valid
+
             else:
-                train_data = Making_Subgraph(self.train_data_dict, candidates_train, self.subgraph_size)
-                valid_data = Making_Subgraph(self.valid_data_dict, candidates_valid, self.subgraph_size)
-                # assert len(train_data) == self.batch_size
-                # assert len(valid_data) == self.batch_size
+                train_data, counted_appearance_train = Making_Subgraph(self.train_data_dict, candidates_train, self.subgraph_size, appearance_train)
+                # valid_data, counted_appearance_valid = Making_Subgraph(self.valid_data_dict, candiadtes_valid, self.subgraph_size//4, appearance_valid)    
+
+                start_count = time.time()
+                sorted_candidates_train = sorted(counted_appearance_train.items(), key=lambda x: x[1]) # key-value. x[1] -> sorted by value
+                new_candidates_train = sorted_candidates_train[:self.train_num_candidates]
+                candidates_train = [item[0] for item in new_candidates_train]
             
-            
+                # sorted_candidates_valid = sorted(counted_appearance_valid.items(), key=lambda x: x[1]) # key-value. x[1] -> sorted by value
+                # new_candidates_valid = sorted_candidates_train[:self.valid_num_candidates]
+                # candidates_valid = [item[0] for item in new_candidates_valid]
+               
+                # print(candidates_train)
+                end_count = time.time()
+                print("Time for Counting = '{}'".format(datetime.timedelta(seconds = end_count - start_count)))    
+                appearance_train = counted_appearance_train
+                # appearance_valid = counted_appearance_valid
+
+            ee = time.time()
+            logger.info("Time for building Subgraphs: {}".format(datetime.timedelta(seconds = ee - ss)))
             train_dataset = Custom_Dataset(data=train_data)
-            valid_dataset = Custom_Dataset(data=valid_data)
+            valid_dataset = Custom_Dataset(data=self.validation_dataset)
         
             self.train_loader = torch.utils.data.DataLoader(
                 train_dataset,
@@ -145,8 +169,8 @@ class Trainer:
             if valid_dataset:
                 self.valid_loader = torch.utils.data.DataLoader(
                     valid_dataset,
-                    batch_size=args.batch_size,
-                    shuffle=False,
+                    batch_size=args.batch_size*2,
+                    shuffle=True,
                     collate_fn=collate,
                     num_workers=args.workers,
                     pin_memory=True)
@@ -156,55 +180,20 @@ class Trainer:
                           
             # train for one epoch
             self.train_epoch(epoch)
+
+            # validation
+            args.validation = True
             self._run_eval(epoch=epoch)
-            
-            s = time.time()
-
-            # Number of processes to use
-            num_processes = args.num_process
-
-            # Split candidates_train into chunks
-            chunks = [candidates_train[i:i + len(candidates_train) // num_processes] for i in range(0, len(candidates_train), len(candidates_train) // num_processes)]
-
-            with multiprocessing.Pool(processes=num_processes) as pool:
-                # Parallelize the update of train_appearance
-                pool.starmap(process_chunk, [(chunk, train_appearance) for chunk in chunks])
-
-            # Sort and select candidates after all updates
-            sorted_candidates_train = sorted(train_appearance.items(), key=lambda x: x[1])
-            new_candidates_train = sorted_candidates_train[:self.train_num_candidates]
-            candidates_train = [item[0] for item in new_candidates_train]
-            
-            """
-            # Selecting the candidates for next epoch
-            for triple in candidates_train:
-                if triple not in train_appearance:                
-                    train_appearance[triple] = 0
-                    logger.info("Warning!! There is no key!!!")              
-                train_appearance[triple] += 1
-            
-                sorted_candidates_train = sorted(train_appearance.items(), key=lambda x: x[1]) # x = key-value paie, x[1] = value
-                new_candidates_train = sorted_candidates_train[:self.train_num_candidates]
-                candidates_train = [item[0] for item in new_candidates_train]
-            
-            for triple in candidates_valid:
-                if triple not in valid_appearance:
-                    valid_appearance[triple] = 0
-                    logger.info("Warning!! There is no key!!!")
-                valid_appearance[triple] += 1
-                sorted_candidates_valid = sorted(valid_appearance.items(), key=lambda x: x[1]) # x = key-value paie, x[1] = value
-                new_candidates_valid = sorted_candidates_valid[:(self.valid_num_candidates*2)] 
-                candidates_valid = [item[0] for item in new_candidates_valid]
-            """
-            e = time.time()
-            print("Time for Counting = '{}'".format(datetime.timedelta(seconds = e - s)))
+            args.validation = False 
 
             end_epoch = time.time()
             print("Time_per_Epoch = '{}'".format(datetime.timedelta(seconds = end_epoch - start_epoch)))
         end_train = time.time()
         print("Total_Training_Time = '{}'".format(datetime.timedelta(seconds = end_train - start_train)))
-        with open(args.appearance_path, 'w', encoding='utf-8') as json_file:
-            json.dump(train_appearance, json_file, ensure_ascii=False, indent=4)
+        
+        serializable_dict = {str(key): value for key, value in appearance_train.items()}
+        with open(args.appearance_path, 'w', encoding='utf-8') as file:
+            json.dump(serializable_dict, file, ensure_ascii=False, indent=4)
         logger.info("Train Appearance File is stored!!")
 
     @torch.no_grad()
