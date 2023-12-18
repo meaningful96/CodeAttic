@@ -33,7 +33,7 @@ python3 -u main.py \
 --pre-batch 0 \
 --subgraph-size 512 \
 --k-steps 50 \
---num-iter 2000 \
+--num-iter 1000 \
 --num-process 30 \
 --finetune-t \
 --epochs 40 \

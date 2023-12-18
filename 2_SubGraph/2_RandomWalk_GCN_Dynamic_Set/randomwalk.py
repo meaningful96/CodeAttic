@@ -63,6 +63,18 @@ class RandomWalk:
         logger.info("Done building Directed Graph with {} nodes".format(len(self.diGraph)))
 
         self.train_dataset = json.load(open(train_path, 'r', encoding='utf-8'))
+        self.degree_dict = defaultdict(list)
+        
+        for entity in self.entities:
+            neighbors = self.get_neighbor_ids(entity, 1)
+            degree_list = []
+            for neighbor in neighbors:
+                degree_list.append(len(self.get_neighbor_ids(neighbor, 1)))
+            prob_proportional = [degree / sum(degree_list) for degree in degree_list]
+            prob_antithetical = [ 1/degree  for degree in degree_list]
+            prob_antithetical = [inverse_degree / sum(prob_antithetical) for inverse_degree in prob_antithetical]
+            self.degree_dict[entity].append(prob_proportional)
+            self.degree_dict[entity].append(prob_antithetical)
 
     def get_neighbor_ids(self, tail_id: str, n_hops: int) -> List[str]:
         if n_hops <= 0:
@@ -126,6 +138,7 @@ class RandomWalk:
     def randomwalk(self, head_id:str, relation:str, tail_id:str, k_steps:int, num_iter:int) -> List[list]:
         graph = self.Graph
         directed_graph = self.diGraph
+        degree_dict = self.degree_dict
         center_triple = (head_id, relation, tail_id)
         total_path = []    
 
@@ -140,24 +153,21 @@ class RandomWalk:
                 append = False
                 neighbors = self.get_neighbor_ids(current_entity, 1)
                 # Unifrom Distribution
-                # candidate = random.choice(list(neighbors)) 
+                candidate = random.choice(list(neighbors)) 
 
                 # Degree Proportional
-                degree_list = []
-                for neighbor in neighbors:
-                    degree_list.append(len(self.get_neighbor_ids(neighbor, 1)))
-                prob_list = [degree / sum(degree_list) for degree in degree_list]
+                """
+                prob_list = self.degree_dict[candidate][0]
                 selected_index = weighted_random_selection(prob_list)
                 candidate = neighbors[selected_index]
+                """
 
                 # Degree Antithetical
-                # degree_list = []
-                # for neighbor in neighbors:
-                #     prob = 1 / len(self.get_neighbor_ids(neighbor, 1))
-                #     degree_list.append(prob)
-                # prob_list = [inverse_degree / sum(degree_list) for inverse_degree in degree_list]
-                # selected_index = weighted_random_selection(prob_list)
-                # candidate = neighbors[selected_index]
+                """
+                prob_list = self.degree_dict[candidate][1]
+                selected_index = weighted_random_selection(prob_list)
+                candidate = neighbors[selected_index]
+                """
 
                 if current_entity in directed_graph.keys():
                     for triple in directed_graph[current_entity]:
@@ -199,17 +209,20 @@ class RandomWalk:
                 append = False
                 neighbors = self.get_neighbor_ids(current_entity, 1)
                 # Unifrom Distribution
-                # candidate = random.choice(list(neighbors)) 
+                candidate = random.choice(list(neighbors)) 
 
                 # Degree Proportional
+                """
                 degree_list = []
                 for neighbor in neighbors:
                     degree_list.append(len(self.get_neighbor_ids(neighbor, 1)))
                 prob_list = [degree / sum(degree_list) for degree in degree_list]
                 selected_index = weighted_random_selection(prob_list)
                 candidate = neighbors[selected_index]
+                """
 
                 # Degree Antithetical
+                """
                 # degree_list = []
                 # for neighbor in neighbors:
                 #     prob = 1 / len(self.get_neighbor_ids(neighbor, 1))
@@ -217,7 +230,8 @@ class RandomWalk:
                 # prob_list = [inverse_degree / sum(degree_list) for inverse_degree in degree_list]
                 # selected_index = weighted_random_selection(prob_list)
                 # candidate = neighbors[selected_index]
-                
+                """
+
                 if current_entity in directed_graph.keys():
                     for triple in directed_graph[current_entity]:
                         if triple[2] == candidate:
@@ -260,14 +274,14 @@ def Path_Dictionary(train_path, k_steps, num_iter, obj, num_process, subgraph_si
     chunks = [data[i:i + chunk_size] for i in range(0, len(data), chunk_size)]
 
     with multiprocessing.Pool(num_process) as pool:
-        results = pool.starmap(process_data_chunk, [(chunk, obj, k_steps, num_iter, disconnected_triple) for chunk in chunks])
+        results = pool.starmap(process_data_chunk, [(chunk, data, obj, k_steps, num_iter, disconnected_triple) for chunk in chunks])
 
     for chunk_result in results:
         for key, value in chunk_result.items():
             triple_dict[key].extend(value)
     return triple_dict
 
-def process_data_chunk(chunk, obj, k_steps, num_iter, disconnected_triple):
+def process_data_chunk(chunk, data, obj, k_steps, num_iter, disconnected_triple):
     chunk_triple_dict = defaultdict(list)
 
     for example in chunk:
@@ -275,7 +289,7 @@ def process_data_chunk(chunk, obj, k_steps, num_iter, disconnected_triple):
         center_triple = (head_id, relation, tail_id)
 
         if center_triple in disconnected_triple:
-            all_path = path_for_disconnected(chunk, center_triple, k_steps, num_iter)  # Note: pass chunk instead of the full data
+            all_path = path_for_disconnected(data, center_triple, k_steps, num_iter)  # Note: pass chunk instead of the full data
         else:
             all_path = obj.randomwalk(head_id, relation, tail_id, k_steps, num_iter)
 
@@ -296,6 +310,8 @@ def path_for_disconnected(data, triple, k_steps, num_iter):
         path.append(triple)
         path_head.append(tuple(path))
     all_path_head = list(set(path_head))
+    all_path_head = [list(path) for path in all_path_head]
+
 
     ## for tail
     path_tail = []
@@ -307,19 +323,20 @@ def path_for_disconnected(data, triple, k_steps, num_iter):
         path.append(triple)
         path_tail.append(tuple(path))
     all_path_tail = list(set(path_tail))    
+    all_path_tail = [list(path) for path in all_path_tail]
 
     all_path.append(all_path_head)
     all_path.append(all_path_tail)
 
     return all_path
 
+
 def Making_Subgraph(path_dict, candidates, subgraph_size, appearance, batch_size):
     total_subgraph = []
     batch_total, sub_total = [], []
     tmp1, tmp2 = [], []
 
-    p1 = len(candidates)
-    p2 = len(candidates)
+    p = len(candidates)
     for candidate in candidates:
         subgraph = []
         # Extract the head paths and tail paths
@@ -333,36 +350,46 @@ def Making_Subgraph(path_dict, candidates, subgraph_size, appearance, batch_size
         
         n = min(len(head_path_list), len(tail_path_list))
 
-        # Using set -> h & t are never duplicated
-
-        all_triples = []
+        # Using Set()
         hr_set = set()
+
+        # add center triple
+        subgraph.append(candidate)
+        hr_set.add(candidate[0])
+        hr_set.add(candidate[2])
+        
         for i in range(n):
             head_candidates, tail_candidates = head_path_list[i], tail_path_list[i]
-            all_triples.extend(head_candidates)
-            all_triples.extend(tail_candidates)
-        all_triples = list(set(all_triples))
-        
-        for triple in all_triples:
-            h, t = triple[0], triple[2]
-            if h and t not in hr_set:
-                hr_set.add(h)
-                hr_set.add(t)
-                subgraph.append(triple)
-                if len(subgraph) == subgraph_size:
-                    break
+            random.shuffle(list(head_candidates))
+            random.shuffle(list(tail_candidates))
+            for triple1 in head_candidates:
+                h1, t1 = triple1[0], triple1[2]
+                if h1 not in hr_set and t1 not in hr_set:
+                    subgraph.append(triple1)
+                    hr_set.add(h1)
+                    hr_set.add(t1)
+            for triple2 in tail_candidates:
+                h2, t2 = triple2[0], triple2[2]
+                if h2 not in hr_set and t2 not in hr_set:
+                    subgraph.append(triple2)
+                    hr_set.add(h2)
+                    hr_set.add(t2)
+            if len(subgraph) >= subgraph_size:
+                break
 
         if len(subgraph) < subgraph_size:
-            while len(subgraph) < subgraph_size:
-                subgraph.extend(random.choice(head_path_list))
-                subgraph.extend(random.choice(tail_path_list))
-                subgraph = list(set(subgraph))
-
+            sorted_triples = sorted(appearance.items(), key=lambda x: x[1])
+            num_diff = subgraph_size - len(subgraph)
+            new_triples = sorted_triples[p: p + num_diff]
+            triples = [item[0] for item in new_triples]
+            p += num_diff
+            subgraph.extend(triples)
+        
         if len(subgraph) >= subgraph_size:
             subgraph = subgraph[:subgraph_size]
 
         assert len(subgraph) == subgraph_size
-
+        
         total_subgraph.extend(subgraph)
         
         for ex in subgraph:
@@ -377,7 +404,7 @@ def Making_Subgraph(path_dict, candidates, subgraph_size, appearance, batch_size
             y1 = batch_size - len(list(set(tmp2)))
             batch_total.append(y1)
             tmp2 = []
-        
+
     for example in total_subgraph:
         appearance[example] += 1
 
@@ -391,12 +418,12 @@ import time
 import datetime
 if __name__ == "__main__":
 
-    train_path = '/home/youminkk/Model_Experiment/2_SubGraph/1_RandomWalk_GCN_Dynamic/data/WN18RR/train.txt.json'
+    train_path = '/home/youminkk/Model_Experiment/2_SubGraph/1_RandomWalk_GCN_Dynamic/data/WN18RR/valid.txt.json'
     obj = RandomWalk(train_path)
     batch_size = 1024
-    subgraph = 512
-    step_size = 169
-    path_dict = Path_Dictionary(train_path, 20, 1000, obj, 20, subgraph)
+    subgraph = 4
+    step_size = 5
+    path_dict = Path_Dictionary(train_path, 10, 100, obj, 30, subgraph)
     keys = list(path_dict.keys())
     outliers = []
     for key in keys:

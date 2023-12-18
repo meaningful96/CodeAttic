@@ -31,9 +31,9 @@ python3 -u main.py \
 --use-amp \
 --use-self-negative \
 --pre-batch 0 \
---subgraph-size 512 \
---k-steps 30 \
---num-iter 2000 \
+--subgraph-size 64 \
+--k-steps 40 \
+--num-iter 500 \
 --num-process 30 \
 --finetune-t \
 --epochs 40 \

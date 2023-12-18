@@ -268,14 +268,14 @@ def Path_Dictionary(train_path, k_steps, num_iter, obj, num_process, subgraph_si
     chunks = [data[i:i + chunk_size] for i in range(0, len(data), chunk_size)]
 
     with multiprocessing.Pool(num_process) as pool:
-        results = pool.starmap(process_data_chunk, [(chunk, obj, k_steps, num_iter, disconnected_triple) for chunk in chunks])
+        results = pool.starmap(process_data_chunk, [(chunk, data, obj, k_steps, num_iter, disconnected_triple) for chunk in chunks])
 
     for chunk_result in results:
         for key, value in chunk_result.items():
             triple_dict[key].extend(value)
     return triple_dict
 
-def process_data_chunk(chunk, obj, k_steps, num_iter, disconnected_triple):
+def process_data_chunk(chunk, data, obj, k_steps, num_iter, disconnected_triple):
     chunk_triple_dict = defaultdict(list)
 
     for example in chunk:
@@ -283,7 +283,7 @@ def process_data_chunk(chunk, obj, k_steps, num_iter, disconnected_triple):
         center_triple = (head_id, relation, tail_id)
 
         if center_triple in disconnected_triple:
-            all_path = path_for_disconnected(chunk, center_triple, k_steps, num_iter)  # Note: pass chunk instead of the full data
+            all_path = path_for_disconnected(data, center_triple, k_steps, num_iter)  # Note: pass chunk instead of the full data
         else:
             all_path = obj.randomwalk(head_id, relation, tail_id, k_steps, num_iter)
 
@@ -346,6 +346,8 @@ def Making_Subgraph(path_dict, candidates, subgraph_size, appearance, batch_size
         # even -> sub_batch1
         # odd  -> sub_batch2
         sub_batch1, sub_batch2 = [], []
+        sub_batch1.append(candidate)
+        sub_batch2.append(candidate)
         for i in range(n):
             head_candidates, tail_candidates = head_path_list[i], tail_path_list[i]
             sub_batch1.extend(head_candidates[::2])
@@ -439,18 +441,18 @@ import time
 import datetime
 if __name__ == "__main__":
 
-    train_path = '/home/youminkk/Model_Experiment/2_SubGraph/1_RandomWalk_GCN_Dynamic/data/WN18RR/train.txt.json'
+    train_path = '/home/youminkk/Model_Experiment/2_SubGraph/1_RandomWalk_GCN_Dynamic/data/WN18RR/valid.txt.json'
     obj = RandomWalk(train_path)
     batch_size = 1024
-    subgraph = 512
-    step_size = 169
-    path_dict = Path_Dictionary(train_path, 30, 1000, obj, 30, subgraph)
+    subgraph = 4
+    step_size = 10
+    path_dict = Path_Dictionary(train_path, 5, 10, obj, 30, subgraph)
     keys = list(path_dict.keys())
     outliers = []
     for key in keys:
         path_lists = path_dict[key]
         x,y = len(path_lists[0]), len(path_lists[1])
-        if x < 100 or y < 100:
+        if x < 10 or y < 10:
             # print(x,y)
             outliers.append(key)
     print(len(outliers))
