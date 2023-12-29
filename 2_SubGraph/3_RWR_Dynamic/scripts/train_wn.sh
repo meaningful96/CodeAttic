@@ -32,7 +32,7 @@ python3 -u main.py \
 --use-self-negative \
 --pre-batch 0 \
 --subgraph-size 512 \
---k-steps 18 \
+--k-steps 20 \
 --num-iter 2000 \
 --num-process 30 \
 --finetune-t \

@@ -204,16 +204,16 @@ class RandomWalk:
                         break
                     else:
                         # Uniform Distribution
-                        # """
-                        candidate = random.choice(list(neighbors))
-                        # """
-                        # Degree Proportional
                         """
+                        candidate = random.choice(list(neighbors))
+                        """
+                        # Degree Proportional
+                        # """
                         candidate_prob = degree_prob[current_entity][0] # Probability
                         candidate_list = degree_list[current_entity]
                         selected_index = weighted_random_selection(candidate_prob)
                         candidate = candidate_list[selected_index]
-                        """
+                        # """
                     
                         # Degree Antithetical
                         """
@@ -374,17 +374,17 @@ def Making_Subgraph(path_dict, candidates, subgraph_size, appearance, batch_size
 import datetime
 if __name__ == "__main__":
 
-    train_path = '/home/youminkk/Model_Experiment/2_SubGraph/3_RWR_Dynamic/data/WN18RR/train.txt.json'
+    train_path = '/home/youminkk/Model_Experiment/2_SubGraph/3_RWR_Dynamic/data/FB15k237/train.txt.json'
     obj = RandomWalk(train_path)
     batch_size = 1024
     subgraph = 512
-    step_size = 169
+    step_size = 531
 
     k_step = 14
-    n_iter = 1000
+    n_iter = 500
 
     sd = time.time()
-    path_dict = Path_Dictionary(train_path, k_step, n_iter, obj, 30, subgraph)
+    path_dict = Path_Dictionary(train_path, k_step, n_iter, obj, 12, subgraph)
     ed = time.time()
     print("Time for Building Path Dictionary: {}".format(datetime.timedelta(seconds = ed - sd)))
    
@@ -395,7 +395,7 @@ if __name__ == "__main__":
     print(num_candidates)
     sub_duplication, batch_duplication = [], []
     x, y, z1, z2 = set(), set(), set(), set()
-    Epoch = 50
+    Epoch = 20
     for epoch in range(Epoch):
         s = time.time()
         total_subgraph, appearance_tmp, sub_total, batch_total = Making_Subgraph(path_dict, candidates, subgraph, appearance, batch_size)
@@ -413,11 +413,11 @@ if __name__ == "__main__":
         
 
         # """
-        if epoch == 9:
+        if epoch == 1:
             bc_bottom10 = sorted_candidates_train[num_candidates:num_candidates+3200]
             bc_bottom10 = [item[0] for item in bc_bottom10]
             print("{} Epoch Before Bottom 3200".format(epoch))
-        if epoch == 10:
+        if epoch == 2:
             ac_bottom11 = sorted_candidates_train[num_candidates:num_candidates+3200]
             ac_bottom11 = [item[0] for item in ac_bottom11]
             print("{} Epoch After Bottom 3200".format(epoch))
@@ -435,11 +435,11 @@ if __name__ == "__main__":
             x, y = set(), set()
             z1, z2 = set(), set()
         
-        if epoch == 19:
+        if epoch == 5:
             bc_bottom20 = sorted_candidates_train[num_candidates:num_candidates+3200]
             bc_bottom20 = [item[0] for item in bc_bottom20]
             print("{} Epoch Before Bottom 3200".format(epoch))
-        if epoch == 20:
+        if epoch == 6:
             ac_bottom21 = sorted_candidates_train[num_candidates:num_candidates+3200]
             ac_bottom21 = [item[0] for item in ac_bottom21]
             print("{} Epoch After Bottom 3200".format(epoch))
@@ -457,11 +457,11 @@ if __name__ == "__main__":
             x, y = set(), set()
             z1, z2 = set(), set()
 
-        if epoch == 29:
+        if epoch == 9:
             bc_bottom30 = sorted_candidates_train[num_candidates:num_candidates+3200]
             bc_bottom30 = [item[0] for item in bc_bottom30]
             print("{} Epoch Before Bottom 3200".format(epoch))
-        if epoch == 30:
+        if epoch == 10:
             ac_bottom31 = sorted_candidates_train[num_candidates:num_candidates+3200]
             ac_bottom31 = [item[0] for item in ac_bottom31]
             print("{} Epoch After Bottom 3200".format(epoch))
@@ -477,11 +477,11 @@ if __name__ == "__main__":
             x, y = set(), set()
             z1, z2 = set(), set()
 
-        if epoch == 39:
+        if epoch == 14:
             bc_bottom40 = sorted_candidates_train[num_candidates:num_candidates+3200]
             bc_bottom40 = [item[0] for item in bc_bottom40]
             print("{} Epoch Before Bottom 3200".format(epoch))
-        if epoch == 40:
+        if epoch == 15:
             ac_bottom41 = sorted_candidates_train[num_candidates:num_candidates+3200]
             ac_bottom41 = [item[0] for item in ac_bottom41]
             print("{} Epoch After Bottom 3200".format(epoch))
@@ -498,11 +498,11 @@ if __name__ == "__main__":
             print("min-Max Triple Duplication: {}".format(triple_backward4))
             x, y = set(), set()
             z1, z2 = set(), set()
-        if epoch == 48:
+        if epoch == 18:
             bc_bottom50 = sorted_candidates_train[num_candidates:num_candidates+3200]
             bc_bottom50 = [item[0] for item in bc_bottom50]
             print("{} Epoch Before Bottom 3200".format(epoch))
-        if epoch == 49:
+        if epoch == 19:
             ac_bottom51 = sorted_candidates_train[num_candidates:num_candidates+3200]
             ac_bottom51 = [item[0] for item in ac_bottom51]
             print("{} Epoch After Bottom 3200".format(epoch))
@@ -520,29 +520,6 @@ if __name__ == "__main__":
             x, y = set(), set()
             z1, z2 = set(), set()   
         
-        """
-        if epoch == 18:
-            bc_bottom60 = sorted_candidates_train[num_candidates:num_candidates+3200]
-            bc_bottom60 = [item[0] for item in bc_bottom60]
-            print("{} Epoch Before Bottom 3200".format(epoch))
-        if epoch == 19:
-            ac_bottom61 = sorted_candidates_train[num_candidates:num_candidates+3200]
-            ac_bottom61 = [item[0] for item in ac_bottom61]
-            print("{} Epoch After Bottom 3200".format(epoch))
-            for i in range(len(bc_bottom60)):
-                triple1 = bc_bottom60[i]
-                triple2 = ac_bottom61[i]
-                x.add(triple1[0])
-                x.add(triple1[2])
-                y.add(triple2[0])
-                y.add(triple2[2])
-                z1.add(triple1)
-                z2.add(triple2)
-            triple_backward6 = len(z2- z1)
-            print("min-Max Triple Duplication: {}".format(triple_backward6))
-            x, y = set(), set()
-            z1, z2 = set(), set() 
-        """
         # """
 
     batch_meanDuple = sum(batch_duplication) / len(batch_duplication)
