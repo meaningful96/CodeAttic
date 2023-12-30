@@ -7,6 +7,7 @@ from logger_config import logger
 import multiprocessing
 import datetime
 import random
+import pickle
 import time
 import json
 
@@ -58,6 +59,63 @@ def weighted_random_selection(prob_distribution):
 
     return selected_index
 
+
+"""
+def mapping_dict(train_path):
+    data = json.load(open(train_path, 'r', encoding='utf-8'))
+    ent_set, rel_set = set(), set()
+    for d in data:
+        ent_set.add(d['head_id'])
+        ent_set.add(d['tail_id'])
+        rel_set.add(d['relation'])
+  
+    ent_list, rel_list = list(ent_set), list(rel_set)
+    ent_dict, rel_dict = defaultdict(int), defaultdict(int)
+    i, j = 1, 1 + len(ent_list) # to distinguish entity and relation
+    for ent in ent_list:
+        if ent not in ent_dict:
+            ent_dict[ent] = i
+            i += 1
+    for rel in rel_list:
+        if rel not in rel_dict:
+            rel_dict[rel] = j
+            j += 1
+    
+    final_data = [{'head_id': ent_dict[d['head_id']], 'relation': rel_dict[d['relation']], 'tail_id': ent_dict[d['tail_id']]} for d in data]
+
+    return ent_dict, rel_dict, final_data
+
+def build_graph_mapped(train_path):
+    Graph, Graph_tail, diGraph = defaultdict(set), defaultdict(set), defaultdict(set)
+    data = json.load(open(train_path, 'r', encoding = 'utf-8'))
+    appearance = {}
+
+    _, _, examples = mapping_dict(train_path)
+
+    for ex in examples:
+        head_id, relation, tail_id = ex['head_id'], ex['relation'], ex['tail_id']
+        appearance[(head_id, relation, tail_id)] = 0
+
+        if head_id not in Graph:
+            Graph[head_id] = set()
+            Graph_tail[head_id] = set()
+            diGraph[head_id] = set()
+        Graph[head_id].add((head_id, relation, tail_id))
+        Graph_tail[head_id].add(tail_id)
+        diGraph[head_id].add((head_id, relation, tail_id))
+        
+        if tail_id not in Graph:
+            Graph[tail_id] = set()
+            Graph_tail[tail_id] = set()
+        Graph[tail_id].add((tail_id, relation, head_id))
+        Graph_tail[tail_id].add(head_id)    
+
+    entities = list(Graph.keys())
+
+    return Graph, Graph_tail, diGraph, appearance, entities
+"""
+
+
 class RandomWalk:
     def __init__(self, train_path:str):
         self.Graph, self.Graph_tail, self.diGraph, self.appearance, self.entities = build_graph(train_path)
@@ -82,7 +140,7 @@ class RandomWalk:
             self.degree_prob[entity].append(prob_antithetical)
             self.degree_list[entity].extend(degree_ent)
 
-    def get_neighbor_ids(self, tail_id: str, n_hops: int) -> List[str]:
+    def get_neighbor_ids(self, tail_id: str, n_hops: int) -> List[str]: # mapping: tail_id:str, List[str] -> tail_id:int, List[int]
         if n_hops <= 0:
             return []
 
@@ -164,7 +222,7 @@ class RandomWalk:
             # Uniform Distribution
             # """
             current_entity = random.choice([head_id, tail_id])
-            # """
+            #  """
             
             # Degree Proportional
             """
@@ -204,16 +262,16 @@ class RandomWalk:
                         break
                     else:
                         # Uniform Distribution
-                        """
-                        candidate = random.choice(list(neighbors))
-                        """
-                        # Degree Proportional
                         # """
+                        candidate = random.choice(list(neighbors))
+                        # """
+                        # Degree Proportional
+                        """
                         candidate_prob = degree_prob[current_entity][0] # Probability
                         candidate_list = degree_list[current_entity]
                         selected_index = weighted_random_selection(candidate_prob)
                         candidate = candidate_list[selected_index]
-                        # """
+                        """
                     
                         # Degree Antithetical
                         """
@@ -251,8 +309,10 @@ class RandomWalk:
 
 
 def Path_Dictionary(train_path, k_steps, num_iter, obj, num_process, subgraph_size):
-    data = json.load(open(train_path, 'r', encoding='utf-8'))
+    train_data = json.load(open(train_path, 'r', encoding='utf-8'))
     triple_dict = defaultdict(list)
+
+    # _, _, data = mapping_dict(train_path)
 
     fully_disconnected, disconnected_triple = obj.Departing()
     logger.info("Departing Disconnected Triple Done!!")
@@ -299,12 +359,21 @@ def path_for_disconnected(data, triple, k_steps, num_iter):
 
     return all_path
 
+"""
+def idx2ent(dictionary):
+    inverted_dict = {value: key for key, value in dictionary.items()}
+    return inverted_dict
+"""
 
 def Making_Subgraph(path_dict, candidates, subgraph_size, appearance, batch_size):
     total_subgraph = []
     batch_total, sub_total = [], []
     tmp1, tmp2 = [], []
     p = len(candidates)
+    
+    # If you use mapped idx file, add the input varaiables: dict1, dict2 
+    # ent_dict, rel_dict = idx2ent(dict1), idx2ent(dict2)
+    
     for candidate in candidates:
         subgraph = []
 
@@ -361,34 +430,75 @@ def Making_Subgraph(path_dict, candidates, subgraph_size, appearance, batch_size
             y1 = batch_size - len(list(set(tmp2)))
             batch_total.append(y1)
             tmp2 = []
-
+    
+    # Subgraph_data = []
     for example in total_subgraph:
         appearance[example] += 1
+        # triplet = (ent_dict[example[0]], rel_dict[example[1]], ent_dict[2])
+        # Subgraph_data.append(triplet)
 
     total_subgraph = [{'head_id': head, 'relation': rel, 'tail_id': tail}
-                      for head, rel, tail in total_subgraph]      
+                       for head, rel, tail in total_subgraph]
 
-    return total_subgraph, appearance, sub_total, batch_total
+    return Subgraph_data, appearance, sub_total, batch_total
    
+"""    
+def save_dict_with_string_keys(dictionary, file_name):
+    # Convert tuple keys to strings
+    modified_dict = {'_'.join(map(str, k)): v for k, v in dictionary.items()}
+    
+    # Save as .npy file
+    np.save(file_name, modified_dict)
+
+def load_dict_with_tuple_keys(file_name):
+    # Load the .npy file
+    loaded_dict = np.load(file_name, allow_pickle=True).item()
+
+    # Convert string keys back to tuples
+    return {tuple(map(int, k.split('_'))): v for k, v in loaded_dict.items()}
+"""
 
 import datetime
 if __name__ == "__main__":
+    import os
+    import numpy as np
 
-    train_path = '/home/youminkk/Model_Experiment/2_SubGraph/3_RWR_Dynamic/data/FB15k237/train.txt.json'
+    train_path = '/home/youminkk/Model_Experiment/2_SubGraph/4_RWR_weighted/data/WN18RR/valid.txt.json'
+
+
     obj = RandomWalk(train_path)
     batch_size = 1024
     subgraph = 512
-    step_size = 531
+    step_size = 169
 
-    k_step = 14
+    k_step = 20
     n_iter = 500
 
     sd = time.time()
-    path_dict = Path_Dictionary(train_path, k_step, n_iter, obj, 12, subgraph)
+    path_dict = Path_Dictionary(train_path, k_step, n_iter, obj, 50, subgraph)
     ed = time.time()
     print("Time for Building Path Dictionary: {}".format(datetime.timedelta(seconds = ed - sd)))
-   
-    Graph, Graph_tail, diGraph, appearance, entities = build_graph(train_path)
+    
+
+    # json_path = '/home/youminkk/Model_Experiment/2_SubGraph/4_RWR_weighted/data/WN18RR/train_uniform_20_2000.json'
+    pkl_path = '/home/youminkk/Model_Experiment/2_SubGraph/4_RWR_weighted/data/WN18RR/valid_uniform20_500.pkl'
+    
+    with open(pkl_path, 'wb') as f:
+        pickle.dump(path_dict, f)
+
+    """
+    # data = {str(key): value for key, value in path_dict.items()}
+    # with open(json_path, 'w', encoding='utf-8') as file:
+    #     json.dump(data, file, ensure_ascii=False, indent=4)
+
+    # Don't need to change the dictionary keys from tuple to string if you save the data as .npy file
+    save_dict_with_string_keys(path_dict, npy_path)
+    print(len(list(path_dict.keys())))
+    """
+    print("Save Done!!")
+    
+    """
+    Graph, Graph_tail, diGraph, appearance, entities = build_graph_mapped(train_path)
     len_wn = len(json.load(open(train_path, 'r', encoding='utf-8')))
     num_candidates = (step_size * batch_size //(subgraph*2))
     candidates = random.sample(list(path_dict.keys()), num_candidates)
@@ -411,117 +521,6 @@ if __name__ == "__main__":
         candidates = [item[0] for item in new_candidates]
         appearance = appearance_tmp
         
-
-        # """
-        if epoch == 1:
-            bc_bottom10 = sorted_candidates_train[num_candidates:num_candidates+3200]
-            bc_bottom10 = [item[0] for item in bc_bottom10]
-            print("{} Epoch Before Bottom 3200".format(epoch))
-        if epoch == 2:
-            ac_bottom11 = sorted_candidates_train[num_candidates:num_candidates+3200]
-            ac_bottom11 = [item[0] for item in ac_bottom11]
-            print("{} Epoch After Bottom 3200".format(epoch))
-            for i in range(len(bc_bottom10)):
-                triple1 = bc_bottom10[i]
-                triple2 = ac_bottom11[i]
-                x.add(triple1[0])
-                x.add(triple1[2])
-                y.add(triple2[0])
-                y.add(triple2[2])
-                z1.add(triple1)
-                z2.add(triple2)
-            triple_backward1 = len(z2- z1)
-            print("min-Max Triple Duplication: {}".format(triple_backward1))
-            x, y = set(), set()
-            z1, z2 = set(), set()
-        
-        if epoch == 5:
-            bc_bottom20 = sorted_candidates_train[num_candidates:num_candidates+3200]
-            bc_bottom20 = [item[0] for item in bc_bottom20]
-            print("{} Epoch Before Bottom 3200".format(epoch))
-        if epoch == 6:
-            ac_bottom21 = sorted_candidates_train[num_candidates:num_candidates+3200]
-            ac_bottom21 = [item[0] for item in ac_bottom21]
-            print("{} Epoch After Bottom 3200".format(epoch))
-            for i in range(len(bc_bottom20)):
-                triple1 = bc_bottom20[i]
-                triple2 = ac_bottom21[i]
-                x.add(triple1[0])
-                x.add(triple1[2])
-                y.add(triple2[0])
-                y.add(triple2[2])
-                z1.add(triple1)
-                z2.add(triple2)
-            triple_backward2 = len(z2- z1)
-            print("min-Max Triple Duplication: {}".format(triple_backward2))
-            x, y = set(), set()
-            z1, z2 = set(), set()
-
-        if epoch == 9:
-            bc_bottom30 = sorted_candidates_train[num_candidates:num_candidates+3200]
-            bc_bottom30 = [item[0] for item in bc_bottom30]
-            print("{} Epoch Before Bottom 3200".format(epoch))
-        if epoch == 10:
-            ac_bottom31 = sorted_candidates_train[num_candidates:num_candidates+3200]
-            ac_bottom31 = [item[0] for item in ac_bottom31]
-            print("{} Epoch After Bottom 3200".format(epoch))
-            for i in range(len(bc_bottom30)):
-                triple1 = bc_bottom30[i]
-                triple2 = ac_bottom31[i]
-                x.add(triple1[0])
-                x.add(triple1[2])
-                z1.add(triple1)
-                z2.add(triple2)
-            triple_backward3 = len(z2- z1)
-            print("min-Max Triple Duplication: {}".format(triple_backward3))
-            x, y = set(), set()
-            z1, z2 = set(), set()
-
-        if epoch == 14:
-            bc_bottom40 = sorted_candidates_train[num_candidates:num_candidates+3200]
-            bc_bottom40 = [item[0] for item in bc_bottom40]
-            print("{} Epoch Before Bottom 3200".format(epoch))
-        if epoch == 15:
-            ac_bottom41 = sorted_candidates_train[num_candidates:num_candidates+3200]
-            ac_bottom41 = [item[0] for item in ac_bottom41]
-            print("{} Epoch After Bottom 3200".format(epoch))
-            for i in range(len(bc_bottom40)):
-                triple1 = bc_bottom40[i]
-                triple2 = ac_bottom41[i]
-                x.add(triple1[0])
-                x.add(triple1[2])
-                y.add(triple2[0])
-                y.add(triple2[2])
-                z1.add(triple1)
-                z2.add(triple2)
-            triple_backward4 = len(z2- z1)
-            print("min-Max Triple Duplication: {}".format(triple_backward4))
-            x, y = set(), set()
-            z1, z2 = set(), set()
-        if epoch == 18:
-            bc_bottom50 = sorted_candidates_train[num_candidates:num_candidates+3200]
-            bc_bottom50 = [item[0] for item in bc_bottom50]
-            print("{} Epoch Before Bottom 3200".format(epoch))
-        if epoch == 19:
-            ac_bottom51 = sorted_candidates_train[num_candidates:num_candidates+3200]
-            ac_bottom51 = [item[0] for item in ac_bottom51]
-            print("{} Epoch After Bottom 3200".format(epoch))
-            for i in range(len(bc_bottom40)):
-                triple1 = bc_bottom50[i]
-                triple2 = ac_bottom51[i]
-                x.add(triple1[0])
-                x.add(triple1[2])
-                y.add(triple2[0])
-                y.add(triple2[2])
-                z1.add(triple1)
-                z2.add(triple2)
-            triple_backward5 = len(z2- z1)
-            print("min-Max Triple Duplication: {}".format(triple_backward5))
-            x, y = set(), set()
-            z1, z2 = set(), set()   
-        
-        # """
-
     batch_meanDuple = sum(batch_duplication) / len(batch_duplication)
     sub_meanDuple = sum(sub_duplication) / len(sub_duplication)
 
@@ -542,4 +541,4 @@ if __name__ == "__main__":
     print("Mean Duplication_Subgraph: {}".format(sub_meanDuple))
     print("Mean appearance: {}".format(mean_appearance))
     print("More than average triples: {}".format(cnt))
- 
+    """

@@ -23,6 +23,8 @@ python3 -u main.py \
 --use-link-graph \
 --train-path "${DATA_DIR}/train.txt.json" \
 --valid-path "${DATA_DIR}/valid.txt.json" \
+--train-path-dict "${DATA_DIR}/train_uniform20_500.npy" \
+--valid-path-dict "${DATA_DIR}/valid_uniform20_500.npy" \
 --appearance-path "${DATA_DIR}/appearance/wn512.json" \
 --task ${TASK} \
 --batch-size 1024 \

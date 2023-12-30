@@ -25,17 +25,17 @@ python3 -u main.py \
 --valid-path "$DATA_DIR/valid.txt.json" \
 --appearance-path "$DATA_DIR/appearance/fb512.json" \
 --task ${TASK} \
---batch-size 1536 \
+--batch-size 3072 \
 --print-freq 20 \
 --additive-margin 0.02 \
 --use-amp \
 --use-self-negative \
---subgraph-size 768 \
+--subgraph-size 1536 \
 --finetune-t \
---num-iter 600 \
---k-steps 14 \
+--num-iter 500 \
+--k-steps 20 \
 --num-process 50 \
---pre-batch 1 \
+--pre-batch 0 \
 --epochs 20 \
 --workers 4 \
 --max-to-keep 5 "$@"

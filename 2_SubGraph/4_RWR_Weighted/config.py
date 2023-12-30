@@ -15,6 +15,10 @@ parser.add_argument('--train-path', default='', type=str, metavar='N',
                     help='path to training data')
 parser.add_argument('--valid-path', default='', type=str, metavar='N',
                     help='path to valid data')
+parser.add_argument('--train-path-dict', default='', type=str, metavar='N',
+                    help='Path Dictionary Data')
+parser.add_argument('--valid-path-dict', default='', type=str, metavar='N',
+                    help='Path Dictionary Data')
 parser.add_argument('--model-dir', default='', type=str, metavar='N',
                     help='path to model dir')
 parser.add_argument('--warmup', default=400, type=int, metavar='N',

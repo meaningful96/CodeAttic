@@ -9,7 +9,7 @@ import torch.utils.data
 from typing import Dict
 from transformers import get_linear_schedule_with_warmup, get_cosine_schedule_with_warmup
 from transformers import AdamW
-from randomwalk import RandomWalk, build_graph, Path_Dictionary, Making_Subgraph
+from randomwalk import RandomWalk, build_graph, build_graph_mapped, Path_Dictionary, Making_Subgraph, mapping_dict
 
 from doc import Dataset, collate, load_data, Custom_Dataset
 from utils import AverageMeter, ProgressMeter
@@ -20,11 +20,26 @@ from dict_hub import build_tokenizer
 from logger_config import logger
 from config import args
 
+import numpy as np
 import multiprocessing
 import random
 import time
 import datetime
+import pickle
 
+"""
+def load_dict_with_tuple_keys(file_name):
+    # Load the .npy file
+    loaded_dict = np.load(file_name, allow_pickle=True).item()
+
+    # Convert string keys back to tuples
+    return {tuple(map(int, k.split('_'))): v for k, v in loaded_dict.items()}
+"""
+
+def load_pkl(path):
+    with open(path, 'rb') as f:
+        loaded_dict = pickle.load(f)
+    return loaded_dict
 
 class Trainer:
 
@@ -44,6 +59,11 @@ class Trainer:
         
         self.train_loss = []
         self.valid_loss = []
+        
+        """
+        self.train_entMapping_dict, self.train_relMapping_dict, _ = mapping_dict(args.train_path)
+        self.valid_entMapping_dict, self.valid_relMapping_dict, _ = mapping_dict(args.valid_path)
+        """
 
         # define loss function (criterion) and optimizer
         self.criterion = nn.CrossEntropyLoss().cuda()
@@ -58,7 +78,10 @@ class Trainer:
         valid_length = len(json.load(open(args.valid_path, 'r', encoding='utf-8')))
         logger.info("Train dataset length: {}".format(dataset_length))
         logger.info("Valid dataset length: {}".format(valid_length))
-        
+       
+        self.train_Graph, self.train_Graph_tail, self.train_diGraph, self.train_appearance, self.train_entities = build_graph(args.train_path)
+        self.valid_Graph, self.valid_Graph_tail, self.valid_diGraph, self.valid_appearance, self.valid_entities = build_graph(args.valid_path)
+
         """
         # Start to Random Walk
         # Only need to implement the randomwalk algorithm at once
@@ -69,9 +92,6 @@ class Trainer:
         # {(h, r, t):[[path1], [path2],...], (h2,r2,t2):{[path1], [path2],...} }
         # The keys such as (h, r, t) are tuples. tuple(str, str, str)
         """
-
-        self.train_Graph, self.train_Graph_tail, self.train_diGraph, self.train_appearance, self.train_entities = build_graph(args.train_path)
-        self.valid_Graph, self.valid_Graph_tail, self.valid_diGraph, self.valid_appearance, self.valid_entities = build_graph(args.valid_path)
 
         self.batch_size = args.batch_size
         self.subgraph_size = args.subgraph_size
@@ -92,14 +112,28 @@ class Trainer:
         logger.info('Total training steps: {}, warmup steps: {}'.format(num_training_steps, args.warmup))
 
         # Random Walk
-        """
-        Never activate the Random Walk Algorithm at validation Steps
-        """
         logger.info("Start RandomWalk!!")
+        
+        # If you want to run the code without creating an npy file, add the lines below
+        """
         self.train_data_dict = Path_Dictionary(args.train_path, self.k_steps, self.num_iter, train_obj, args.num_process, args.subgraph_size)
         self.train_initial_triples = random.sample(list(self.train_data_dict.keys()), self.train_num_candidates)
         
         self.valid_data_dict = Path_Dictionary(args.valid_path, self.k_steps, self.num_iter, valid_obj, args.num_process, args.subgraph_size)       
+        self.valid_initial_triples = random.sample(list(self.valid_data_dict.keys()), self.valid_num_candidates)
+        """
+        
+        # Path Dictionary
+        # train_data_dict = load_dict_with_tuple_keys(args.train_path_dict)
+        # valid_data_dict = load_dict_with_tuple_keys(args.valid_path_dict)
+        # train_data_dict = np.load(args.train_path_dict, allow_pickle=True).item()
+        # valid_data_dict = np.load(args.valid_path_dict, allow_pickle=True).item()
+        
+        self.train_data_dict = load_pkl(args.train_path_dict)
+        self.valid_data_dict = load_pkl(args.valid_path_dict)
+
+        # Inintial triples
+        self.train_initial_triples = random.sample(list(self.train_data_dict.keys()), self.train_num_candidates)
         self.valid_initial_triples = random.sample(list(self.valid_data_dict.keys()), self.valid_num_candidates)
 
         self.scheduler = self._create_lr_scheduler(num_training_steps)
@@ -125,13 +159,17 @@ class Trainer:
                 candidates_train = self.train_initial_triples
                 candidates_valid = self.valid_initial_triples
 
-                train_data, counted_appearance_train, sub_total, batch_total  = Making_Subgraph(self.train_data_dict, 
+                train_data, counted_appearance_train, sub_total, batch_total  = Making_Subgraph(self.train_data_dict,
+                                                                                                # self.train_entMapping_dict,
+                                                                                                # self.train_relMapping_dict,
                                                                                                 candidates_train, 
                                                                                                 self.subgraph_size, 
                                                                                                 appearance_train, 
                                                                                                 self.batch_size)
                 
-                valid_data, counted_appearance_valid, _, _  = Making_Subgraph(self.valid_data_dict, 
+                valid_data, counted_appearance_valid, _, _  = Making_Subgraph(self.valid_data_dict,
+                                                                              # self.valid_entMapping_dict,
+                                                                              # self.valid_relMapping_dict,
                                                                               candidates_valid, 
                                                                               self.subgraph_size, 
                                                                               appearance_valid, 
@@ -156,17 +194,21 @@ class Trainer:
                 appearance_valid = counted_appearance_valid
 
             else:
-                train_data, counted_appearance_train, sub_total, batch_total  = Making_Subgraph(self.train_data_dict, 
+                train_data, counted_appearance_train, sub_total, batch_total  = Making_Subgraph(self.train_data_dict,
+                                                                                                # self.train_entMapping_dict,
+                                                                                                # self.train_relMapping_dict,
                                                                                                 candidates_train, 
                                                                                                 self.subgraph_size, 
                                                                                                 appearance_train, 
                                                                                                 self.batch_size)
-
-                valid_data, counted_appearance_valid, _, _  = Making_Subgraph(self.valid_data_dict, 
+                
+                valid_data, counted_appearance_valid, _, _  = Making_Subgraph(self.valid_data_dict,
+                                                                              # self.valid_entMapping_dict,
+                                                                              # self.valid_relMapping_dict,
                                                                               candidates_valid, 
                                                                               self.subgraph_size, 
                                                                               appearance_valid, 
-                                                                              self.batch_size)     
+                                                                              self.batch_size)      
                 self.batch_duplication.extend(batch_total)
                 self.sub_duplication.extend(sub_total)
 
