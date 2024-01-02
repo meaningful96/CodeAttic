@@ -23,9 +23,9 @@ python3 -u main.py \
 --use-link-graph \
 --train-path "${DATA_DIR}/train.txt.json" \
 --valid-path "${DATA_DIR}/valid.txt.json" \
---train-path-dict "${DATA_DIR}/train_uniform20_500.npy" \
---valid-path-dict "${DATA_DIR}/valid_uniform20_500.npy" \
---appearance-path "${DATA_DIR}/appearance/wn512.json" \
+--train-path-dict "${DATA_DIR}/train_string_uniform20_2000.pkl" \
+--valid-path-dict "${DATA_DIR}/valid_string_uniform20_2000.pkl" \
+--appearance-path "${DATA_DIR}/appearance/wn_uniform20_2000.json" \
 --task ${TASK} \
 --batch-size 1024 \
 --print-freq 20 \
@@ -36,7 +36,7 @@ python3 -u main.py \
 --subgraph-size 512 \
 --k-steps 20 \
 --num-iter 2000 \
---num-process 30 \
+--num-process 50 \
 --finetune-t \
 --epochs 50 \
 --workers 4 \

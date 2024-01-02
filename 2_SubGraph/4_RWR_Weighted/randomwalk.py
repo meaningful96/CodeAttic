@@ -7,10 +7,9 @@ from logger_config import logger
 import multiprocessing
 import datetime
 import random
-import pickle
 import time
 import json
-
+import pickle
 
 def build_graph(train_path:str):
     Graph, Graph_tail, diGraph = defaultdict(set), defaultdict(set), defaultdict(set)
@@ -59,8 +58,6 @@ def weighted_random_selection(prob_distribution):
 
     return selected_index
 
-
-"""
 def mapping_dict(train_path):
     data = json.load(open(train_path, 'r', encoding='utf-8'))
     ent_set, rel_set = set(), set()
@@ -113,8 +110,6 @@ def build_graph_mapped(train_path):
     entities = list(Graph.keys())
 
     return Graph, Graph_tail, diGraph, appearance, entities
-"""
-
 
 class RandomWalk:
     def __init__(self, train_path:str):
@@ -140,7 +135,7 @@ class RandomWalk:
             self.degree_prob[entity].append(prob_antithetical)
             self.degree_list[entity].extend(degree_ent)
 
-    def get_neighbor_ids(self, tail_id: str, n_hops: int) -> List[str]: # mapping: tail_id:str, List[str] -> tail_id:int, List[int]
+    def get_neighbor_ids(self, tail_id: str, n_hops: int) -> List[int]: # mapping: tail_id:str, List[str] -> tail_id:int, List[int]
         if n_hops <= 0:
             return []
 
@@ -151,11 +146,11 @@ class RandomWalk:
             distant_neighbors.extend(self.get_neighbor_ids(neighbor, n_hops-1))
         return list(set(neighbors + distant_neighbors))
 
-    def get_neighbor_ent_ids(self, entity_id: str) -> List[str]:
+    def get_neighbor_ent_ids(self, entity_id: int) -> List[int]:
         neighbor_ids = self.Graph_tail.get(entity_id, set())
         return sorted(list(neighbor_ids))
 
-    def bfs(self, start: str) -> Dict[str, int]:
+    def bfs(self, start: int) -> Dict[str, int]:
         visited = {}
         queue = deque([(start, 0)])
 
@@ -222,7 +217,7 @@ class RandomWalk:
             # Uniform Distribution
             # """
             current_entity = random.choice([head_id, tail_id])
-            #  """
+            # """
             
             # Degree Proportional
             """
@@ -311,7 +306,8 @@ class RandomWalk:
 def Path_Dictionary(train_path, k_steps, num_iter, obj, num_process, subgraph_size):
     train_data = json.load(open(train_path, 'r', encoding='utf-8'))
     triple_dict = defaultdict(list)
-
+    
+    data = train_data
     # _, _, data = mapping_dict(train_path)
 
     fully_disconnected, disconnected_triple = obj.Departing()
@@ -359,21 +355,16 @@ def path_for_disconnected(data, triple, k_steps, num_iter):
 
     return all_path
 
-"""
 def idx2ent(dictionary):
     inverted_dict = {value: key for key, value in dictionary.items()}
     return inverted_dict
-"""
 
 def Making_Subgraph(path_dict, candidates, subgraph_size, appearance, batch_size):
     total_subgraph = []
     batch_total, sub_total = [], []
     tmp1, tmp2 = [], []
     p = len(candidates)
-    
-    # If you use mapped idx file, add the input varaiables: dict1, dict2 
     # ent_dict, rel_dict = idx2ent(dict1), idx2ent(dict2)
-    
     for candidate in candidates:
         subgraph = []
 
@@ -431,18 +422,15 @@ def Making_Subgraph(path_dict, candidates, subgraph_size, appearance, batch_size
             batch_total.append(y1)
             tmp2 = []
     
-    # Subgraph_data = []
     for example in total_subgraph:
-        appearance[example] += 1
+        appearance[tuple(example)] += 1
         # triplet = (ent_dict[example[0]], rel_dict[example[1]], ent_dict[2])
-        # Subgraph_data.append(triplet)
 
     total_subgraph = [{'head_id': head, 'relation': rel, 'tail_id': tail}
-                       for head, rel, tail in total_subgraph]
+                      for head, rel, tail in total_subgraph]
 
-    return Subgraph_data, appearance, sub_total, batch_total
+    return total_subgraph, appearance, sub_total, batch_total
    
-"""    
 def save_dict_with_string_keys(dictionary, file_name):
     # Convert tuple keys to strings
     modified_dict = {'_'.join(map(str, k)): v for k, v in dictionary.items()}
@@ -456,14 +444,14 @@ def load_dict_with_tuple_keys(file_name):
 
     # Convert string keys back to tuples
     return {tuple(map(int, k.split('_'))): v for k, v in loaded_dict.items()}
-"""
+
 
 import datetime
 if __name__ == "__main__":
     import os
     import numpy as np
 
-    train_path = '/home/youminkk/Model_Experiment/2_SubGraph/4_RWR_weighted/data/WN18RR/valid.txt.json'
+    train_path = '/home/youminkk/Model_Experiment/2_SubGraph/4_RWR_weighted/data/WN18RR/train.txt.json'
 
 
     obj = RandomWalk(train_path)
@@ -472,21 +460,21 @@ if __name__ == "__main__":
     step_size = 169
 
     k_step = 20
-    n_iter = 500
+    n_iter = 2000
 
     sd = time.time()
     path_dict = Path_Dictionary(train_path, k_step, n_iter, obj, 50, subgraph)
     ed = time.time()
     print("Time for Building Path Dictionary: {}".format(datetime.timedelta(seconds = ed - sd)))
-    
-
-    # json_path = '/home/youminkk/Model_Experiment/2_SubGraph/4_RWR_weighted/data/WN18RR/train_uniform_20_2000.json'
-    pkl_path = '/home/youminkk/Model_Experiment/2_SubGraph/4_RWR_weighted/data/WN18RR/valid_uniform20_500.pkl'
-    
+    pkl_path = '/home/youminkk/Model_Experiment/2_SubGraph/4_RWR_weighted/data/WN18RR/train_string_uniform20_2000.pkl'
     with open(pkl_path, 'wb') as f:
         pickle.dump(path_dict, f)
 
+
     """
+    # json_path = '/home/youminkk/Model_Experiment/2_SubGraph/4_RWR_weighted/data/WN18RR/train_uniform_14_1000.json'
+    npy_path = '/home/youminkk/x/data/WN18RR/valid_string_uniform20_500.npy'
+    
     # data = {str(key): value for key, value in path_dict.items()}
     # with open(json_path, 'w', encoding='utf-8') as file:
     #     json.dump(data, file, ensure_ascii=False, indent=4)
@@ -494,9 +482,8 @@ if __name__ == "__main__":
     # Don't need to change the dictionary keys from tuple to string if you save the data as .npy file
     save_dict_with_string_keys(path_dict, npy_path)
     print(len(list(path_dict.keys())))
-    """
     print("Save Done!!")
-    
+    """
     """
     Graph, Graph_tail, diGraph, appearance, entities = build_graph_mapped(train_path)
     len_wn = len(json.load(open(train_path, 'r', encoding='utf-8')))

@@ -3,16 +3,26 @@ from copy import deepcopy
 
 import torch
 import torch.nn as nn
+import networkx as nx
+import json
+import torch.nn.functional as F
 
 from dataclasses import dataclass
 from transformers import AutoModel, AutoConfig
+from randomwalk import build_graph
 
 from triplet_mask import construct_mask
 from config import args
 
+import time
+import datetime
+
+def L2_norm(matrix):
+    return F.normalize(matrix, p=2, dim=0)
+    # It is for the shortest path weight so that the normalized direction 'dim' is the same as the batch direction.
+
 def build_model(args) -> nn.Module:
     return CustomBertModel(args)
-
 
 @dataclass
 class ModelOutput:
@@ -45,6 +55,32 @@ class CustomBertModel(nn.Module, ABC):
         self.hr_bert = AutoModel.from_pretrained(args.pretrained_model)
         self.tail_bert = deepcopy(self.hr_bert)
         self.subgraph = args.subgraph_size * 2    
+        
+
+        # """
+        # These lines are for shortest path weight
+        self.train_data = json.load(open(args.train_path, 'r', encoding='utf-8'))
+        self.valid_data = json.load(open(args.valid_path, 'r', encoding='utf-8'))
+        _, _, _, _, self.train_entities = build_graph(args.train_path)
+        _, _, _, _, self.valid_entities = build_graph(args.valid_path)
+        self.maxlen_train = len(self.train_entities)
+        self.maxlen_valid = len(self.valid_entities)
+        
+        
+        self.nxGraph_train = nx.Graph()
+        self.nxGraph_valid = nx.Graph()     
+
+        for item in self.train_data:
+            self.nxGraph_train.add_node(item["head_id"], label=item["head"])
+            self.nxGraph_train.add_node(item["tail_id"], label=item["tail"])
+            self.nxGraph_train.add_edge(item["head_id"], item["tail_id"], relation=item["relation"])
+        
+        for item in self.valid_data:
+            self.nxGraph_valid.add_node(item["head_id"], label=item["head"])
+            self.nxGraph_valid.add_node(item["tail_id"], label=item["tail"])
+            self.nxGraph_valid.add_edge(item["head_id"], item["tail_id"], relation=item["relation"])
+
+        # """
 
     def _encode(self, encoder, token_ids, mask, token_type_ids):
         outputs = encoder(input_ids=token_ids,
@@ -90,13 +126,48 @@ class CustomBertModel(nn.Module, ABC):
         hr_vector, tail_vector = output_dict['hr_vector'], output_dict['tail_vector']
         batch_size = hr_vector.size(0)
         labels = torch.arange(batch_size).to(hr_vector.device)
-        
-
         logits = hr_vector.mm(tail_vector.t())
+
+        # """
+        # Shortest Path Weight
+        batch_data = batch_dict['batch_triple']
+        source = batch_data[0][0]
+        st_list = []
+        for ex in batch_data:
+            target = ex[2]
+            if args.validation == False:
+                try:
+                    st = nx.shortest_path_length(self.nxGraph_train, source=source, target=target)
+                    # for head-to-head
+                    if st == 0:
+                        st = 1
+                except nx.NetworkXNoPath:
+                    # Disconnected Triples
+                    st = self.maxlen_train
+
+            if args.validation == True:        
+                try:
+                    st = nx.shortest_path_length(self.nxGraph_valid, source=source, target=target)
+                    # for head-to-head
+                    if st == 0:
+                        st = 1
+                except nx.NetworkXNoPath:
+                    # Disconnected Triples
+                    st = self.maxlen_valid
+            st_list.append(1/st)
+        st_vector = torch.tensor(st_list).view(-1, 1)
+        st_vector = st_vector.type(torch.float32)
+        st_weight = st_vector.mm(st_vector.t()).to(logits.device)
+        st_weight.fill_diagonal_(1)
+        logits = logits * st_weight
+        # """
+
         if self.training:
             logits -= torch.zeros(logits.size()).fill_diagonal_(self.add_margin).to(logits.device)
         logits *= self.log_inv_t.exp()
+        
         """
+        # Giving different tau between hard negatives and easy negatives
         hard = torch.ones(logits.size()).to(logits.device)
         for i in range(0, logits.size(1), self.subgraph):
             hard[i:(i+self.subgraph), i:(i+self.subgraph)] = self.log_inv_tt.exp()
@@ -108,17 +179,6 @@ class CustomBertModel(nn.Module, ABC):
         if triplet_mask is not None:
             logits.masked_fill_(~triplet_mask, -1e4)
         
-        """ 
-        if args.validation:
-            logits = hr_vector.mm(tail_vector.t())
-            if self.training:
-                logits -= torch.zeros(logits.size()).fill_diagonal_(self.add_margin).to(logits.device)
-            logits *= self.log_inv_t.exp()
-
-            triplet_mask = batch_dict.get('triplet_mask', None)
-            if triplet_mask is not None:
-                logits.masked_fill_(~triplet_mask, -1e4)
-        """
 
         if self.pre_batch > 0 and self.training:
             pre_batch_logits = self._compute_pre_batch_logits(hr_vector, tail_vector, batch_dict)

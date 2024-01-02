@@ -259,9 +259,9 @@ class Trainer:
             self.train_epoch(epoch)
 
             # validation
-            # args.validation = True
+            args.validation = True
             self._run_eval(epoch=epoch)
-            # args.validation = False 
+            args.validation = False 
 
             end_epoch = time.time()
             print("Time_per_Epoch = '{}'".format(datetime.timedelta(seconds = end_epoch - start_epoch)))

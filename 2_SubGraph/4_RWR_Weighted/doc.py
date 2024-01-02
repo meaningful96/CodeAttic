@@ -101,12 +101,15 @@ class Example:
         tail_word = _parse_entity_name(self.tail)
         tail_encoded_inputs = _custom_tokenize(text=_concat_name_desc(tail_word, tail_desc))
 
+        triple = (self.head_id, self.relation, self.tail_id)
+
         return {'hr_token_ids': hr_encoded_inputs['input_ids'],
                 'hr_token_type_ids': hr_encoded_inputs['token_type_ids'],
                 'tail_token_ids': tail_encoded_inputs['input_ids'],
                 'tail_token_type_ids': tail_encoded_inputs['token_type_ids'],
                 'head_token_ids': head_encoded_inputs['input_ids'],
                 'head_token_type_ids': head_encoded_inputs['token_type_ids'],
+                'triple': triple,
                 'obj': self}
 
 
@@ -206,6 +209,7 @@ def collate(batch_data: List[dict]) -> dict:
         need_mask=False)
     
     batch_exs = [ex['obj'] for ex in batch_data]
+    batch_triple = [triple['triple'] for triple in batch_data]
     batch_dict = {
         'hr_token_ids': hr_token_ids,
         'hr_mask': hr_mask,
@@ -217,6 +221,7 @@ def collate(batch_data: List[dict]) -> dict:
         'head_mask': head_mask,
         'head_token_type_ids': head_token_type_ids,
         'batch_data': batch_exs,
+        'batch_triple': batch_triple,
         'triplet_mask': construct_mask(row_exs=batch_exs) if not args.is_test else None,
         'self_negative_mask': construct_self_negative_mask(batch_exs) if not args.is_test else None,
     }
