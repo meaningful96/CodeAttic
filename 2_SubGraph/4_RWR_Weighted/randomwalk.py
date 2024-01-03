@@ -215,14 +215,14 @@ class RandomWalk:
             
             
             # Uniform Distribution
-            # """
+            """
             current_entity = random.choice([head_id, tail_id])
-            # """
+            """
             
             # Degree Proportional
-            """
+            # """
             current_entity = center_ent[weighted_random_selection(center_pro)]
-            """
+            # """
             
             # Degree Antithetical
             """
@@ -257,16 +257,16 @@ class RandomWalk:
                         break
                     else:
                         # Uniform Distribution
-                        # """
-                        candidate = random.choice(list(neighbors))
-                        # """
-                        # Degree Proportional
                         """
+                        candidate = random.choice(list(neighbors))
+                        """
+                        # Degree Proportional
+                        # """
                         candidate_prob = degree_prob[current_entity][0] # Probability
                         candidate_list = degree_list[current_entity]
                         selected_index = weighted_random_selection(candidate_prob)
                         candidate = candidate_list[selected_index]
-                        """
+                        # """
                     
                         # Degree Antithetical
                         """
@@ -451,7 +451,7 @@ if __name__ == "__main__":
     import os
     import numpy as np
 
-    train_path = '/home/youminkk/Model_Experiment/2_SubGraph/4_RWR_weighted/data/WN18RR/train.txt.json'
+    train_path = '/home/youminkk/Model_Experiment/2_SubGraph/4_RWR_weighted/data/FB15k237/train.txt.json'
 
 
     obj = RandomWalk(train_path)
@@ -459,14 +459,14 @@ if __name__ == "__main__":
     subgraph = 512
     step_size = 169
 
-    k_step = 20
-    n_iter = 2000
+    k_step = 10
+    n_iter = 1000
 
     sd = time.time()
-    path_dict = Path_Dictionary(train_path, k_step, n_iter, obj, 50, subgraph)
+    path_dict = Path_Dictionary(train_path, k_step, n_iter, obj, 15, subgraph)
     ed = time.time()
     print("Time for Building Path Dictionary: {}".format(datetime.timedelta(seconds = ed - sd)))
-    pkl_path = '/home/youminkk/Model_Experiment/2_SubGraph/4_RWR_weighted/data/WN18RR/train_string_uniform20_2000.pkl'
+    pkl_path = '/home/youminkk/Model_Experiment/2_SubGraph/4_RWR_weighted/data/FB15k237/train_string_proportional10_1000.pkl'
     with open(pkl_path, 'wb') as f:
         pickle.dump(path_dict, f)
 

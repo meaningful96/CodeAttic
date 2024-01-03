@@ -29,7 +29,7 @@ class ModelOutput:
     logits: torch.tensor
     labels: torch.tensor
     inv_t: torch.tensor
-    inv_tt: torch.tensor
+    inv_b: torch.tensor
     hr_vector: torch.tensor
     tail_vector: torch.tensor
 
@@ -40,7 +40,7 @@ class CustomBertModel(nn.Module, ABC):
         self.args = args
         self.config = AutoConfig.from_pretrained(args.pretrained_model)
         self.log_inv_t = torch.nn.Parameter(torch.tensor(1.0 / args.t).log(), requires_grad=args.finetune_t)
-        self.log_inv_tt = torch.nn.Parameter(torch.tensor(1.0 / args.tt).log(), requires_grad=args.finetune_t)
+        self.log_inv_b = torch.nn.Parameter(torch.tensor(1.0 / args.b).log(), requires_grad=args.finetune_b)
         self.add_margin = args.additive_margin
         self.batch_size = args.batch_size
         self.pre_batch = args.pre_batch
@@ -79,7 +79,6 @@ class CustomBertModel(nn.Module, ABC):
             self.nxGraph_valid.add_node(item["head_id"], label=item["head"])
             self.nxGraph_valid.add_node(item["tail_id"], label=item["tail"])
             self.nxGraph_valid.add_edge(item["head_id"], item["tail_id"], relation=item["relation"])
-
         # """
 
     def _encode(self, encoder, token_ids, mask, token_type_ids):
@@ -155,19 +154,43 @@ class CustomBertModel(nn.Module, ABC):
                     # Disconnected Triples
                     st = self.maxlen_valid
             st_list.append(1/st)
+    
+        st_value = sum(st_list) / len(st_list)
+        
         st_vector = torch.tensor(st_list).view(-1, 1)
         st_vector = st_vector.type(torch.float32)
         st_weight = st_vector.mm(st_vector.t()).to(logits.device)
         st_weight.fill_diagonal_(1)
-        logits = logits * st_weight
-        # """
 
         if self.training:
             logits -= torch.zeros(logits.size()).fill_diagonal_(self.add_margin).to(logits.device)
-        logits *= self.log_inv_t.exp()
+
+        # Case 1. 
+        # st_weight = torch.log(L2_norm(st_weight))
+        # logits *= self.log_inv_t.exp(
+
+        # Case 2.
+        # st_weight = L2_norm(torch.log(st_weight) * self.log_inv_t) 
+        # logits *= st_weight
+
+        # Case 3. ST Weight with Learnable parameter b
+        """
+        # Leave the original scoring function alone
+        # The multiplication between ST weight and the scoring function induces the large variation of the loss
+        # The large variation ratio is not good for deep learning model because it can cause the overfitting
+        """        
+        logits *= self.log_inv_t.exp() 
         
+        st_margin = st_weight * self.log_inv_b.exp()
+        
+        logits += st_margin
+
+        # """
+
         """
         # Giving different tau between hard negatives and easy negatives
+        # You need to add the args.tt on `config.py` file
+
         hard = torch.ones(logits.size()).to(logits.device)
         for i in range(0, logits.size(1), self.subgraph):
             hard[i:(i+self.subgraph), i:(i+self.subgraph)] = self.log_inv_tt.exp()
@@ -194,7 +217,7 @@ class CustomBertModel(nn.Module, ABC):
         return {'logits': logits,
                 'labels': labels,
                 'inv_t': self.log_inv_t.detach().exp(),
-                'inv_tt': self.log_inv_tt.detach().exp(),
+                'inv_b': self.log_inv_b.detach().exp(),
                 'hr_vector': hr_vector.detach(),
                 'tail_vector': tail_vector.detach()}
 

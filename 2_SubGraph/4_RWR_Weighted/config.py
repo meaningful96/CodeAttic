@@ -41,8 +41,6 @@ parser.add_argument('--validation', default=False, action='store_true',
                     help='validation')
 parser.add_argument('--appearance-path', default='', type=str, metavar='N',
                     help='path to store appearance data')
-parser.add_argument('--tt', default=0.025, type=float,
-                    help='temperature parameter for hard negative')
 parser.add_argument('--k-steps', default=5, type=int,
                     help='step size for randomwalk')
 parser.add_argument('--num-iter', default=100, type=int,
@@ -51,6 +49,9 @@ parser.add_argument('--subgraph-size', default=16, type=int,
                     help='Subgraph Size')
 parser.add_argument('--num-process', default=30, type=int,
                     help='process number')
+parser.add_argument('--b', default=10, type=float, metavar='N',
+                    help='learnable parameter for shortest path weight')
+
 
 parser.add_argument('--use-link-graph', action='store_true',
                     help='use neighbors from link graph as context')
@@ -64,6 +65,10 @@ parser.add_argument('--additive-margin', default=0.0, type=float, metavar='N',
                     help='additive margin for InfoNCE loss function')
 parser.add_argument('--finetune-t', action='store_true',
                     help='make temperature as a trainable parameter or not')
+parser.add_argument('--finetune-b', action='store_true',
+                    help='make temperature as a trainable parameter or not')
+
+
 parser.add_argument('--max-num-tokens', default=50, type=int,
                     help='maximum number of tokens')
 parser.add_argument('--use-self-negative', action='store_true',
