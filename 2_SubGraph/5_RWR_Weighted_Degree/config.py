@@ -53,6 +53,10 @@ parser.add_argument('--B', default=1.01, type=float, metavar='N',
                     help='learnable parameter for shortest path weight')
 parser.add_argument('--shortest-path', default='', type=str, metavar='N',
                     help='path to store shortest path dict')
+parser.add_argument('--degree-train', default='', type=str, metavar='N',
+                    help='path to store shortest path dict')
+parser.add_argument('--degree-valid', default='', type=str, metavar='N',
+                    help='path to store shortest path dict')
 
 parser.add_argument('--use-link-graph', action='store_true',
                     help='use neighbors from link graph as context')

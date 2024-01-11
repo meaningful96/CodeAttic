@@ -10,6 +10,8 @@ import torch.nn.functional as F
 from dataclasses import dataclass
 from transformers import AutoModel, AutoConfig
 from randomwalk import build_graph
+from typing import List, Dict
+from collections import defaultdict
 
 from triplet_mask import construct_mask
 from config import args
@@ -25,6 +27,42 @@ def L2_norm(matrix):
 def build_model(args) -> nn.Module:
     return CustomBertModel(args)
 
+def linkGraph(train_path:str):
+    Graph, Graph_tail, diGraph = defaultdict(set), defaultdict(set), defaultdict(set)
+    examples = json.load(open(train_path, 'r', encoding = 'utf-8'))
+    appearance = {}
+
+    for ex in examples:
+        head_id, relation, tail_id = ex['head_id'], ex['relation'], ex['tail_id']
+        appearance[(head_id, relation, tail_id)] = 0
+
+        if head_id not in Graph:
+            Graph[head_id] = set()
+        Graph[head_id].add((head_id, relation, tail_id))
+        
+        if tail_id not in Graph:
+            Graph[tail_id] = set()
+        Graph[tail_id].add((tail_id, relation, head_id))    
+
+    entities = list(Graph.keys())
+
+    return Graph, entities
+
+class LinkGraph:
+    def __init__(self, train_path:str):
+        self.Graph, _ = linkGraph(train_path)
+
+    def get_neighbor_ids(self, tail_id: str, n_hops: int) -> List[int]: # mapping: tail_id:str, List[str] -> tail_id:int, List[int]
+        if n_hops <= 0:
+            return []
+
+        neighbors = [item[2]for item in self.Graph.get(tail_id, set())]
+        distant_neighbors = []
+        
+        for neighbor in neighbors:
+            distant_neighbors.extend(self.get_neighbor_ids(neighbor, n_hops-1))
+        return list(set(neighbors + distant_neighbors)) 
+
 @dataclass
 class ModelOutput:
     logits: torch.tensor
@@ -33,6 +71,8 @@ class ModelOutput:
     inv_b: torch.tensor
     hr_vector: torch.tensor
     tail_vector: torch.tensor
+    degree_head: torch.tensor
+    degree_tail: torch.tensor
 
 class CustomBertModel(nn.Module, ABC):
     def __init__(self, args):
@@ -56,6 +96,12 @@ class CustomBertModel(nn.Module, ABC):
         self.tail_bert = deepcopy(self.hr_bert)
         self.subgraph = args.subgraph_size * 2   
         
+        self.degree_train = json.load(open(args.degree_train, 'r', encoding='utf-8'))
+        self.degree_valid = json.load(open(args.degree_valid, 'r', encoding='utf-8'))
+        self.linkGraph_train = LinkGraph(args.train_path)
+        self.linkGraph_valid = LinkGraph(args.valid_path)
+
+
         with open(args.shortest_path, 'rb') as fr:
             self.st_dict = pickle.load(fr)    
         
@@ -63,7 +109,8 @@ class CustomBertModel(nn.Module, ABC):
         with open(args.shortest_path_valid, 'rb') as f:
             self.valid_st_dict = pickle.load(f)
         """
-        # """
+
+        """
         # These lines are for shortest path weight
         self.train_data = json.load(open(args.train_path, 'r', encoding='utf-8'))
         self.valid_data = json.load(open(args.valid_path, 'r', encoding='utf-8'))
@@ -85,7 +132,7 @@ class CustomBertModel(nn.Module, ABC):
             self.nxGraph_valid.add_node(item["head_id"], label=item["head"])
             self.nxGraph_valid.add_node(item["tail_id"], label=item["tail"])
             self.nxGraph_valid.add_edge(item["head_id"], item["tail_id"], relation=item["relation"])
-        # """
+        """
 
     def _encode(self, encoder, token_ids, mask, token_type_ids):
         outputs = encoder(input_ids=token_ids,
@@ -201,6 +248,22 @@ class CustomBertModel(nn.Module, ABC):
             st_margin = st_weight * self.log_inv_b.exp()
             logits += st_margin
 
+        degree_head = torch.zeros(logits.size(0)).to(logits.device) # head
+        degree_tail = torch.zeros(logits.size(0)).to(logits.device) # tail
+
+        for i, triple in enumerate(batch_data):
+            head, tail = triple[0], triple[2]
+            if not args.validation: # Training
+                dh = len(self.linkGraph_train.get_neighbor_ids(head, 1)) + 1
+                dt = len(self.linkGraph_train.get_neighbor_ids(tail, 1)) + 1
+            if args.validation: # Training
+                dh = len(self.linkGraph_valid.get_neighbor_ids(head, 1)) + 1
+                dt = len(self.linkGraph_valid.get_neighbor_ids(tail, 1)) + 1
+            degree_head[i] = dh
+            degree_tail[i] = dt
+        
+        degree_head = degree_head.log()
+        degree_tail = degree_tail.log()
 
         # """
 
@@ -215,10 +278,10 @@ class CustomBertModel(nn.Module, ABC):
 
         logits *= hard
         """
+
         triplet_mask = batch_dict.get('triplet_mask', None)
         if triplet_mask is not None:
-            logits.masked_fill_(~triplet_mask, -1e4)
-        
+            logits.masked_fill_(~triplet_mask, -1e4)        
 
         if self.pre_batch > 0 and self.training:
             pre_batch_logits = self._compute_pre_batch_logits(hr_vector, tail_vector, batch_dict)
@@ -236,7 +299,9 @@ class CustomBertModel(nn.Module, ABC):
                 'inv_t': self.log_inv_t.detach().exp(),
                 'inv_b': self.log_inv_b.detach().exp(),
                 'hr_vector': hr_vector.detach(),
-                'tail_vector': tail_vector.detach()}
+                'tail_vector': tail_vector.detach(),
+                'degree_head': degree_head,
+                'degree_tail': degree_tail}
 
     def _compute_pre_batch_logits(self, hr_vector: torch.tensor,
                                   tail_vector: torch.tensor,

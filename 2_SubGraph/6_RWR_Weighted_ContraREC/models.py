@@ -18,6 +18,43 @@ import pickle
 import time
 import datetime
 
+def linkGraph(train_path:str):
+    Graph, Graph_tail, diGraph = defaultdict(set), defaultdict(set), defaultdict(set)
+    examples = json.load(open(train_path, 'r', encoding = 'utf-8'))
+    appearance = {}
+
+    for ex in examples:
+        head_id, relation, tail_id = ex['head_id'], ex['relation'], ex['tail_id']
+        appearance[(head_id, relation, tail_id)] = 0
+
+        if head_id not in Graph:
+            Graph[head_id] = set()
+        Graph[head_id].add((head_id, relation, tail_id))
+        
+        if tail_id not in Graph:
+            Graph[tail_id] = set()
+        Graph[tail_id].add((tail_id, relation, head_id))    
+
+    entities = list(Graph.keys())
+
+    return Graph, entities
+
+class LinkGraph:
+    def __init__(self, train_path:str):
+        self.Graph, _ = linkGraph(train_path)
+
+    def get_neighbor_ids(self, tail_id: str, n_hops: int) -> List[int]: # mapping: tail_id:str, List[str] -> tail_id:int, List[int]
+        if n_hops <= 0:
+            return []
+
+        neighbors = [item[2]for item in self.Graph.get(tail_id, set())]
+        distant_neighbors = []
+        
+        for neighbor in neighbors:
+            distant_neighbors.extend(self.get_neighbor_ids(neighbor, n_hops-1))
+        return list(set(neighbors + distant_neighbors)) 
+
+
 def L2_norm(matrix):
     return F.normalize(matrix, p=2, dim=0)
     # It is for the shortest path weight so that the normalized direction 'dim' is the same as the batch direction.
@@ -30,9 +67,16 @@ class ModelOutput:
     logits: torch.tensor
     labels: torch.tensor
     inv_t: torch.tensor
+    inv_tt: torch.tensor
     inv_b: torch.tensor
+    Lambda: torch.tensor
     hr_vector: torch.tensor
     tail_vector: torch.tensor
+    logits_Contra_hr: torch.tensor
+    logits_Contra_tail: torch.tensor
+    degree_head: torch.tensor
+    degree_tail: torch.tensor
+    
 
 class CustomBertModel(nn.Module, ABC):
     def __init__(self, args):
@@ -40,7 +84,9 @@ class CustomBertModel(nn.Module, ABC):
         self.args = args
         self.config = AutoConfig.from_pretrained(args.pretrained_model)
         self.log_inv_t = torch.nn.Parameter(torch.tensor(1.0 / args.t).log(), requires_grad=args.finetune_t)
-        self.log_inv_b = torch.nn.Parameter(torch.tensor(1.0 / args.B).log(), requires_grad=args.finetune_B)
+        self.log_inv_tt = torch.nn.Parameter(torch.tensor(1.0 / args.tt).log(), requires_grad=args.finetune_tt)
+        self.log_inv_b = torch.nn.parameter(torch.tensor(1.0 / args.b).log(), requires_grad=args.finetune_b)
+        self.Lambda = torch.nn.parameter(torch.tensor(args.Lambda), requires_grad=args.finetune_Lambda)
         self.add_margin = args.additive_margin
         self.batch_size = args.batch_size
         self.pre_batch = args.pre_batch
@@ -63,7 +109,8 @@ class CustomBertModel(nn.Module, ABC):
         with open(args.shortest_path_valid, 'rb') as f:
             self.valid_st_dict = pickle.load(f)
         """
-        # """
+
+        """
         # These lines are for shortest path weight
         self.train_data = json.load(open(args.train_path, 'r', encoding='utf-8'))
         self.valid_data = json.load(open(args.valid_path, 'r', encoding='utf-8'))
@@ -72,6 +119,11 @@ class CustomBertModel(nn.Module, ABC):
         self.maxlen_train = len(self.train_entities)
         self.maxlen_valid = len(self.valid_entities)
         
+        self.degree_dict_train = json.load(open(args.degree_train, 'r', encoding='utf-8'))
+        self.degree_dict_valid = json.load(open(args.degree_valid, 'r', encoding='utf-8'))
+
+        self.linkGraph_train = LinkGraph(args.train_path)
+        self.linkGraph_valid = LinkGraph(args.valid_path)
         
         self.nxGraph_train = nx.Graph()
         self.nxGraph_valid = nx.Graph()     
@@ -85,7 +137,7 @@ class CustomBertModel(nn.Module, ABC):
             self.nxGraph_valid.add_node(item["head_id"], label=item["head"])
             self.nxGraph_valid.add_node(item["tail_id"], label=item["tail"])
             self.nxGraph_valid.add_edge(item["head_id"], item["tail_id"], relation=item["relation"])
-        # """
+        """
 
     def _encode(self, encoder, token_ids, mask, token_type_ids):
         outputs = encoder(input_ids=token_ids,
@@ -101,6 +153,7 @@ class CustomBertModel(nn.Module, ABC):
     def forward(self, hr_token_ids, hr_mask, hr_token_type_ids,
                 tail_token_ids, tail_mask, tail_token_type_ids,
                 head_token_ids, head_mask, head_token_type_ids,
+                aug_hr_token_ids1, aug_hr_token_ids2, aug_tail_token_ids1, aug_tail_token_ids2
                 only_ent_embedding=False, **kwargs) -> dict:
         if only_ent_embedding:
             return self.predict_ent_embedding(tail_token_ids=tail_token_ids,
@@ -121,19 +174,42 @@ class CustomBertModel(nn.Module, ABC):
                                    token_ids=head_token_ids,
                                    mask=head_mask,
                                    token_type_ids=head_token_type_ids)
-        
+
+        aug_hr_vector1 = self._encode(self.hr_bert
+                                   token_ids=aug_hr_token_ids1,
+                                   mask=head_mask,
+                                   token_type_ids=head_token_type_ids)
+        aug_tail_vector1 = self._encode(self.tail_bert
+                                   token_ids=aug_tail_token_ids1,
+                                   mask=head_mask,
+                                   token_type_ids=head_token_type_ids)
+        aug_hr_vector2 = self._encode(self.hr_bert
+                                   token_ids=aug_hr_token_ids2,
+                                   mask=head_mask,
+                                   token_type_ids=head_token_type_ids)
+        aug_tail_vector2 = self._encode(self.tail_bert
+                                   token_ids=aug_tail_token_ids2,
+                                   mask=head_mask,
+                                   token_type_ids=head_token_type_ids)
+       
         # DataParallel only support tensor/dict
         return {'hr_vector': hr_vector,
                 'tail_vector': tail_vector,
-                'head_vector': head_vector}
+                'head_vector': head_vector,
+                'aug_hr_vector1': aug_hr_vector1,
+                'aug_hr_vector2': aug_hr_vector2,
+                'aug_tail_vector1': aug_tail_vector1,
+                'aug_tail_vector2': aug_tail_vector2}
 
     def compute_logits(self, output_dict: dict, batch_dict: dict) -> dict:
         hr_vector, tail_vector = output_dict['hr_vector'], output_dict['tail_vector']
+        aug_hr_vector1, aug_hr_vector2 = output_dict['aug_hr_vector1'], output_dict['aug_hr_vector2']
+        aug_tail_vector1, aug_tail_vector2 = output_dict['aug_tail_vector1'], output_dict['aug_tail_vector2']
         batch_size = hr_vector.size(0)
         labels = torch.arange(batch_size).to(hr_vector.device)
         logits = hr_vector.mm(tail_vector.t())
         batch_data = batch_dict['batch_triple']
-        
+       
         """
         # Shortest Path Weight
         batch_data = batch_dict['batch_triple']
@@ -182,6 +258,7 @@ class CustomBertModel(nn.Module, ABC):
 
         # Case 3. ST Weight with Learnable parameter b
         """
+
         logits *= self.log_inv_t.exp()
         
         if not args.validation:
@@ -201,8 +278,28 @@ class CustomBertModel(nn.Module, ABC):
             st_margin = st_weight * self.log_inv_b.exp()
             logits += st_margin
 
-
         # """
+        degree_head = torch.zeros(logits.size(0)).to(logits.device)
+        degree_tail = torch.zeros(logits.size(0)).to(logits.device)
+
+        for i, triple in enumerate(batch_data):
+            head, tail = triple[0], triple[2]
+            if not args.validation:
+                dh = len(self.linkgraph_train.get_neighbor_ids(head, 1)) + 1
+                dt = len(self.linkgraph_train.get_neighbor_ids(tail, 1)) + 1
+            if args.validation:
+                dh = len(self.linkgraph_valid.get_neighbor_ids(head, 1)) + 1
+                dt = len(self.linkgraph_valid.get_neighbor_ids(tail, 1)) + 1
+            degree_head[i] = dh
+            degree_tail[i] = dt
+        degree_head, degree_tail = degree_head.log(), degree_tail.log()
+
+        # ContraREC Loss
+        logits_Contra_hr = aug_hr_vector1.mm(aug_hr_vector2.t()).to(logits.device)
+        logits_Contra_tail = aug_tail_vector2.mm(aug_tail_vector2.t()).to(logits.devcie)
+
+        logits_Contra_hr *= self.log_inv_tt
+        logits_Contra_tail *= self.log_inv_tt
 
         """
         # Giving different tau between hard negatives and easy negatives
@@ -232,11 +329,17 @@ class CustomBertModel(nn.Module, ABC):
             logits = torch.cat([logits, self_neg_logits.unsqueeze(1)], dim=-1)
         
         return {'logits': logits,
+                'logits_Contra_hr': logits_Contra_hr,
+                'logits_Contra_tail': logits_Contra_tail,
                 'labels': labels,
                 'inv_t': self.log_inv_t.detach().exp(),
                 'inv_b': self.log_inv_b.detach().exp(),
+                'inv_tt': self.log_inv_tt.detach().exp(),
                 'hr_vector': hr_vector.detach(),
-                'tail_vector': tail_vector.detach()}
+                'tail_vector': tail_vector.detach(),
+                'self.Lambda': self.Lambda.detach(),
+                'degree_head': degree_head,
+                'degree_tail': degree_tail}
 
     def _compute_pre_batch_logits(self, hr_vector: torch.tensor,
                                   tail_vector: torch.tensor,

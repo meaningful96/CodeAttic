@@ -3,7 +3,11 @@
 set -x
 set -e
 
-TASK="WN18RR"
+TASK="wiki5m_ind"
+if [[ $# -ge 1 && ! "$1" == "--"* ]]; then
+    TASK=$1
+    shift
+fi
 
 DIR="$( cd "$( dirname "$0" )" && cd .. && pwd )"
 echo "working directory: ${DIR}"
@@ -19,28 +23,17 @@ python3 -u main.py \
 --model-dir "${OUTPUT_DIR}" \
 --pretrained-model bert-base-uncased \
 --pooling mean \
---lr 5e-5 \
---use-link-graph \
+--lr 3e-5 \
 --train-path "${DATA_DIR}/train.txt.json" \
 --valid-path "${DATA_DIR}/valid.txt.json" \
---train-path-dict "${DATA_DIR}/train_string_antithetical20_2000.pkl" \
---valid-path-dict "${DATA_DIR}/valid_string_antithetical20_2000.pkl" \
---appearance-path "${DATA_DIR}/appearance/weighted_uniform20_2000.json" \
---shortest-path "${DATA_DIR}/train_st.pkl" \
---task ${TASK} \
+--task "${TASK}" \
 --batch-size 1024 \
 --print-freq 20 \
 --additive-margin 0.02 \
 --use-amp \
 --use-self-negative \
---pre-batch 0 \
---subgraph-size 512 \
---k-steps 20 \
---num-iter 2000 \
---num-process 50 \
 --finetune-t \
---finetune-B \
---B 1.01 \
---epochs 50 \
---workers 4 \
---max-to-keep 15 "$@"
+--pre-batch 0 \
+--epochs 1 \
+--workers 3 \
+--max-to-keep 10 "$@"

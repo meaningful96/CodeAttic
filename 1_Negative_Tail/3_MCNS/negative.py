@@ -31,7 +31,7 @@ def negative_sampling(model, hr_vector, candidates, q1_dict, walks_num, N_steps,
    
     #####################################
     # In MCNS paper, they explained 
-    # 𝑞(𝑦|𝑥) is defined by mixing uniform sampling 
+    # q(y|x) is defined by mixing uniform sampling 
     # and sampling from the nearest 𝑘 nodes with 1/2 probability each.
     # candidates : dfs path
     # n_steps = 10.. burn in period

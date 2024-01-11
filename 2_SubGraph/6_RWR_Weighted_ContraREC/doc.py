@@ -1,6 +1,8 @@
 import os
 import json
 import torch
+import copy
+import random
 import torch.utils.data.dataset
 
 from typing import Optional, List
@@ -206,7 +208,25 @@ def collate(batch_data: List[dict]) -> dict:
     head_token_type_ids = to_indices_and_mask(
         [torch.LongTensor(ex['head_token_type_ids']) for ex in batch_data],
         need_mask=False)
+
+    aug_hr_token_ids1 = [augment(ex['hr_token_ids']) for ex in batch_data]
+    aug_hr_token_ids1 = to_indices_and_mask(
+        [torch.LongTensor(ex) for ex in aug_hr_token_ids1],
+        pad_token_id=get_tokenizer().pad_token_id, need_mask=False)
+    #aug_hr_token_type_ids = torch.LongTensor
+    aug_hr_token_ids2 = [augment(ex['hr_token_ids']) for ex in batch_data]
+    aug_hr_token_ids2 = to_indices_and_mask(
+        [torch.LongTensor(ex) for ex in aug_hr_token_ids2],
+        pad_token_id=get_tokenizer().pad_token_id, need_mask=False)
     
+    aug_tail_token_ids1 = [augment(ex['tail_token_ids']) for ex in batch_data]
+    aug_tail_token_ids1 = to_indices_and_mask(
+        [torch.LongTensor(ex) for ex in aug_tail_token_ids1],
+        pad_token_id=get_tokenizer().pad_token_id, need_mask=False)
+    aug_tail_token_ids2 = [augment(ex['tail_token_ids']) for ex in batch_data]
+    aug_tail_token_ids2= to_indices_and_mask(
+        [torch.LongTensor(ex) for ex in aug_tail_token_ids2],
+        pad_token_id=get_tokenizer().pad_token_id, need_mask=False)
     batch_exs = [ex['obj'] for ex in batch_data]
     batch_triple = [triple['triple'] for triple in batch_data]
     batch_dict = {
@@ -219,6 +239,10 @@ def collate(batch_data: List[dict]) -> dict:
         'head_token_ids': head_token_ids,
         'head_mask': head_mask,
         'head_token_type_ids': head_token_type_ids,
+        'aug_hr_token_ids1':aug_hr_token_ids1,
+        'aug_hr_token_ids2':aug_hr_token_ids2,
+        'aug_tail_token_ids1':aug_tail_token_ids1,
+        'aug_tail_token_ids2':aug_tail_token_ids2
         'batch_data': batch_exs,
         'batch_triple': batch_triple,
         'triplet_mask': construct_mask(row_exs=batch_exs) if not args.is_test else None,
@@ -243,3 +267,33 @@ def to_indices_and_mask(batch_tensor, pad_token_id=0, need_mask=True):
         return indices, mask
     else:
         return indices
+
+def reorder_op(args, token_ids):
+    ratio = np.random.beta(a= args.beta_a, b=args.beta_b)
+    select_len = int(len(token_ids) * ratio)
+    start = np.random.randint(0, len(token_ids) - select_len + 1)
+    idx_range = np.arange(len(token_ids))
+    np.random.shuffle(idx_range[start: start+ select_len])
+    return token_ids[idx_range]
+
+def mask_op(token_ids):
+    tokenizer = get_tokenizer()
+    ratio = np.random.beta(a=args.beta_a, b=args.beta_b)    
+    selected_len = int(len(token_ids) * ratio)
+    mask = np.full(len(token_ids), False)
+    mask[:selected_len] = True
+    np.random.shuffle(mask)
+    #mask token: contrarec 구현: max(id) + 1
+    #tokenizer.mask_token_ids = 103 아마? 
+    token_ids[mask] = get_tokenizer().mask_token_id
+    
+    return token_ids
+
+def augment(token_ids):
+    aug= np.array(token_ids).copy()
+    if np.random.rand() > 0.5:
+        aug_toekn_ids = mask_op(aug)
+        return aug_toekn_ids
+    else:
+        aug_token_ids= reorder_op(aug)
+        return aug_token_ids

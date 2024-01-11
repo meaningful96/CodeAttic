@@ -44,7 +44,7 @@ def compute_metrics(hr_tensor: torch.tensor,
                     entities_tensor: torch.tensor,
                     target: List[int],
                     examples: List[Example],
-                    k=200, batch_size=256) -> Tuple:
+                    k=100, batch_size=256) -> Tuple:
     assert hr_tensor.size(1) == entities_tensor.size(1)
     total = hr_tensor.size(0)
     entity_cnt = len(entity_dict)
