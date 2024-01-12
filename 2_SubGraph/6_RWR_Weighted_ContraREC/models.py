@@ -10,6 +10,7 @@ import torch.nn.functional as F
 from dataclasses import dataclass
 from transformers import AutoModel, AutoConfig
 from randomwalk import build_graph
+from typing import List, Dict
 
 from triplet_mask import construct_mask
 from config import args
@@ -17,6 +18,8 @@ import pickle
 
 import time
 import datetime
+
+
 
 def linkGraph(train_path:str):
     Graph, Graph_tail, diGraph = defaultdict(set), defaultdict(set), defaultdict(set)
@@ -85,8 +88,8 @@ class CustomBertModel(nn.Module, ABC):
         self.config = AutoConfig.from_pretrained(args.pretrained_model)
         self.log_inv_t = torch.nn.Parameter(torch.tensor(1.0 / args.t).log(), requires_grad=args.finetune_t)
         self.log_inv_tt = torch.nn.Parameter(torch.tensor(1.0 / args.tt).log(), requires_grad=args.finetune_tt)
-        self.log_inv_b = torch.nn.parameter(torch.tensor(1.0 / args.b).log(), requires_grad=args.finetune_b)
-        self.Lambda = torch.nn.parameter(torch.tensor(args.Lambda), requires_grad=args.finetune_Lambda)
+        self.log_inv_b = torch.nn.Parameter(torch.tensor(1.0 / args.B).log(), requires_grad=args.finetune_B)
+        self.Lambda = torch.nn.Parameter(torch.tensor(args.Lambda), requires_grad=args.finetune_Lambda)
         self.add_margin = args.additive_margin
         self.batch_size = args.batch_size
         self.pre_batch = args.pre_batch
@@ -153,7 +156,7 @@ class CustomBertModel(nn.Module, ABC):
     def forward(self, hr_token_ids, hr_mask, hr_token_type_ids,
                 tail_token_ids, tail_mask, tail_token_type_ids,
                 head_token_ids, head_mask, head_token_type_ids,
-                aug_hr_token_ids1, aug_hr_token_ids2, aug_tail_token_ids1, aug_tail_token_ids2
+                aug_hr_token_ids1, aug_hr_token_ids2, aug_tail_token_ids1, aug_tail_token_ids2,
                 only_ent_embedding=False, **kwargs) -> dict:
         if only_ent_embedding:
             return self.predict_ent_embedding(tail_token_ids=tail_token_ids,
@@ -175,19 +178,19 @@ class CustomBertModel(nn.Module, ABC):
                                    mask=head_mask,
                                    token_type_ids=head_token_type_ids)
 
-        aug_hr_vector1 = self._encode(self.hr_bert
+        aug_hr_vector1 = self._encode(self.hr_bert,
                                    token_ids=aug_hr_token_ids1,
                                    mask=head_mask,
                                    token_type_ids=head_token_type_ids)
-        aug_tail_vector1 = self._encode(self.tail_bert
+        aug_tail_vector1 = self._encode(self.tail_bert,
                                    token_ids=aug_tail_token_ids1,
                                    mask=head_mask,
                                    token_type_ids=head_token_type_ids)
-        aug_hr_vector2 = self._encode(self.hr_bert
+        aug_hr_vector2 = self._encode(self.hr_bert,
                                    token_ids=aug_hr_token_ids2,
                                    mask=head_mask,
                                    token_type_ids=head_token_type_ids)
-        aug_tail_vector2 = self._encode(self.tail_bert
+        aug_tail_vector2 = self._encode(self.tail_bert,
                                    token_ids=aug_tail_token_ids2,
                                    mask=head_mask,
                                    token_type_ids=head_token_type_ids)
@@ -301,17 +304,6 @@ class CustomBertModel(nn.Module, ABC):
         logits_Contra_hr *= self.log_inv_tt
         logits_Contra_tail *= self.log_inv_tt
 
-        """
-        # Giving different tau between hard negatives and easy negatives
-        # You need to add the args.tt on `config.py` file
-
-        hard = torch.ones(logits.size()).to(logits.device)
-        for i in range(0, logits.size(1), self.subgraph):
-            hard[i:(i+self.subgraph), i:(i+self.subgraph)] = self.log_inv_tt.exp()
-        hard[hard != self.log_inv_t.exp()] = self.log_inv_t.exp()
-
-        logits *= hard
-        """
         triplet_mask = batch_dict.get('triplet_mask', None)
         if triplet_mask is not None:
             logits.masked_fill_(~triplet_mask, -1e4)

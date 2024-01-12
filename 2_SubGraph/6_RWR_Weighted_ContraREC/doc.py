@@ -4,7 +4,7 @@ import torch
 import copy
 import random
 import torch.utils.data.dataset
-
+import numpy as np
 from typing import Optional, List
 
 from config import args
@@ -213,7 +213,6 @@ def collate(batch_data: List[dict]) -> dict:
     aug_hr_token_ids1 = to_indices_and_mask(
         [torch.LongTensor(ex) for ex in aug_hr_token_ids1],
         pad_token_id=get_tokenizer().pad_token_id, need_mask=False)
-    #aug_hr_token_type_ids = torch.LongTensor
     aug_hr_token_ids2 = [augment(ex['hr_token_ids']) for ex in batch_data]
     aug_hr_token_ids2 = to_indices_and_mask(
         [torch.LongTensor(ex) for ex in aug_hr_token_ids2],
@@ -242,7 +241,7 @@ def collate(batch_data: List[dict]) -> dict:
         'aug_hr_token_ids1':aug_hr_token_ids1,
         'aug_hr_token_ids2':aug_hr_token_ids2,
         'aug_tail_token_ids1':aug_tail_token_ids1,
-        'aug_tail_token_ids2':aug_tail_token_ids2
+        'aug_tail_token_ids2':aug_tail_token_ids2,
         'batch_data': batch_exs,
         'batch_triple': batch_triple,
         'triplet_mask': construct_mask(row_exs=batch_exs) if not args.is_test else None,
@@ -268,7 +267,7 @@ def to_indices_and_mask(batch_tensor, pad_token_id=0, need_mask=True):
     else:
         return indices
 
-def reorder_op(args, token_ids):
+def reorder_op(token_ids):
     ratio = np.random.beta(a= args.beta_a, b=args.beta_b)
     select_len = int(len(token_ids) * ratio)
     start = np.random.randint(0, len(token_ids) - select_len + 1)
@@ -292,8 +291,8 @@ def mask_op(token_ids):
 def augment(token_ids):
     aug= np.array(token_ids).copy()
     if np.random.rand() > 0.5:
-        aug_toekn_ids = mask_op(aug)
-        return aug_toekn_ids
+        aug_token_ids = mask_op(aug)
+        return aug_token_ids
     else:
         aug_token_ids= reorder_op(aug)
         return aug_token_ids
