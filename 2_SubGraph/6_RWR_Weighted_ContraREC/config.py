@@ -39,6 +39,8 @@ parser.add_argument('--t', default=0.05, type=float,
 ## added by youmin
 parser.add_argument('--validation', default=False, action='store_true',
                     help='validation')
+parser.add_argument('--appearance-path', default='', type=str, metavar='N',
+                    help='path to store appearance data')
 parser.add_argument('--k-steps', default=5, type=int,
                     help='step size for randomwalk')
 parser.add_argument('--num-iter', default=100, type=int,
@@ -49,26 +51,12 @@ parser.add_argument('--num-process', default=30, type=int,
                     help='process number')
 parser.add_argument('--B', default=1.01, type=float, metavar='N',
                     help='learnable parameter for shortest path weight')
-parser.add_argument('--Lambda', default=1.0, type=float, metavar='N',
-                    help='learnable parameter for shortest path weight')
 parser.add_argument('--shortest-path', default='', type=str, metavar='N',
                     help='path to store shortest path dict')
-parser.add_argument('--beta-a', default=3, type=int, metavar='N',
-                    help='Beta Distribution (x)^a + (1-x)^b')
-parser.add_argument('--beta-b', default=3, type=int, metavar='N',
-                    help='Beta Distribution Hyperparameter')
-parser.add_argument('--finetune-Lambda', action='store_true',
-                    help='make temperature as a trainable parameter or not')
-parser.add_argument('--tt', default=0.05, type=float,
-                    help='temperature parameter for Contra Loss')
-parser.add_argument('--finetune-tt', action='store_true',
-                    help='make temperature as a trainable parameter or not')
 parser.add_argument('--degree-train', default='', type=str, metavar='N',
                     help='path to store shortest path dict')
 parser.add_argument('--degree-valid', default='', type=str, metavar='N',
                     help='path to store shortest path dict')
-
-
 
 parser.add_argument('--use-link-graph', action='store_true',
                     help='use neighbors from link graph as context')

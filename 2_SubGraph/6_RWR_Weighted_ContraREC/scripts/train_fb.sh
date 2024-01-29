@@ -25,23 +25,24 @@ python3 -u main.py \
 --valid-path "$DATA_DIR/valid.txt.json" \
 --train-path-dict "$DATA_DIR/train_string_uniform14_1000.pkl" \
 --valid-path-dict "$DATA_DIR/valid_string_uniform14_1000.pkl" \
+--appearance-path "$DATA_DIR/appearance/fb512_14_1000.json" \
 --shortest-path "$DATA_DIR/train_st.pkl" \
 --degree-train "${DATA_DIR}/degree_train.json" \
 --degree-valid "${DATA_DIR}/degree_valid.json" \
 --task ${TASK} \
---batch-size 3072 \
+--batch-size 1024 \
 --print-freq 20 \
 --additive-margin 0.02 \
 --use-amp \
 --use-self-negative \
---subgraph-size 1536 \
+--subgraph-size 512 \
 --finetune-t \
 --finetune-B \
 --B 10 \
 --num-iter 500 \
 --k-steps 10 \
 --num-process 50 \
---pre-batch 0 \
+--pre-batch 2 \
 --epochs 20 \
 --workers 4 \
 --max-to-keep 5 "$@"

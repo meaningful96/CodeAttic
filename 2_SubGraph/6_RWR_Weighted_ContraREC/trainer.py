@@ -5,6 +5,7 @@ import shutil
 
 import torch.nn as nn
 import torch.utils.data
+import torch.nn.functional as F
 
 from typing import Dict
 from transformers import get_linear_schedule_with_warmup, get_cosine_schedule_with_warmup
@@ -35,14 +36,16 @@ def load_dict_with_tuple_keys(file_name):
     # Convert string keys back to tuples
     return {tuple(map(int, k.split('_'))): v for k, v in loaded_dict.items()}
 """
-def mean_tensor(tensor):
-    row_averages = torch.mean(tensor, dim=0)
-    return row_aberages
 
 def load_pkl(path):
     with open(path, 'rb') as f:
         loaded_dict = pickle.load(f)
     return loaded_dict
+
+def mean_tensor(matrix):
+    row_averages = torch.mean(matrix, dim=0)
+    return row_averages
+
 
 class Trainer:
 
@@ -63,15 +66,14 @@ class Trainer:
         self.train_loss = []
         self.valid_loss = []
         
-
         """
         self.train_entMapping_dict, self.train_relMapping_dict, _ = mapping_dict(args.train_path)
         self.valid_entMapping_dict, self.valid_relMapping_dict, _ = mapping_dict(args.valid_path)
         """
 
         # define loss function (criterion) and optimizer
-        self.criterion = nn.CrossEntropyLoss(reduction='none').cuda()
-        self.criterion_Contra = nn.CrossEntropyLoss().cuda()
+        self.criterion = nn.CrossEntropyLoss(reduction = 'none').cuda() # tail degree -> column 
+        # self.criterion = nn.CrossEntropyLoss().cuda() # head degree -> row
 
         self.optimizer = AdamW([p for p in self.model.parameters() if p.requires_grad],
                                lr=args.lr,
@@ -86,7 +88,7 @@ class Trainer:
        
         self.train_Graph, self.train_Graph_tail, self.train_diGraph, self.train_appearance, self.train_entities = build_graph(args.train_path)
         self.valid_Graph, self.valid_Graph_tail, self.valid_diGraph, self.valid_appearance, self.valid_entities = build_graph(args.valid_path)
-        
+
         """
         # Start to Random Walk
         # Only need to implement the randomwalk algorithm at once
@@ -129,6 +131,10 @@ class Trainer:
         """
         
         # Path Dictionary
+        # train_data_dict = load_dict_with_tuple_keys(args.train_path_dict)
+        # valid_data_dict = load_dict_with_tuple_keys(args.valid_path_dict)
+        # train_data_dict = np.load(args.train_path_dict, allow_pickle=True).item()
+        # valid_data_dict = np.load(args.valid_path_dict, allow_pickle=True).item()
         
         self.train_data_dict = load_pkl(args.train_path_dict)
         self.valid_data_dict = load_pkl(args.valid_path_dict)
@@ -161,12 +167,16 @@ class Trainer:
                 candidates_valid = self.valid_initial_triples
 
                 train_data, counted_appearance_train, sub_total, batch_total  = Making_Subgraph(self.train_data_dict,
+                                                                                                # self.train_entMapping_dict,
+                                                                                                # self.train_relMapping_dict,
                                                                                                 candidates_train, 
                                                                                                 self.subgraph_size, 
                                                                                                 appearance_train, 
                                                                                                 self.batch_size)
                 
                 valid_data, counted_appearance_valid, _, _  = Making_Subgraph(self.valid_data_dict,
+                                                                              # self.valid_entMapping_dict,
+                                                                              # self.valid_relMapping_dict,
                                                                               candidates_valid, 
                                                                               self.subgraph_size, 
                                                                               appearance_valid, 
@@ -192,12 +202,16 @@ class Trainer:
 
             else:
                 train_data, counted_appearance_train, sub_total, batch_total  = Making_Subgraph(self.train_data_dict,
+                                                                                                # self.train_entMapping_dict,
+                                                                                                # self.train_relMapping_dict,
                                                                                                 candidates_train, 
                                                                                                 self.subgraph_size, 
                                                                                                 appearance_train, 
                                                                                                 self.batch_size)
                 
                 valid_data, counted_appearance_valid, _, _  = Making_Subgraph(self.valid_data_dict,
+                                                                              # self.valid_entMapping_dict,
+                                                                              # self.valid_relMapping_dict,
                                                                               candidates_valid, 
                                                                               self.subgraph_size, 
                                                                               appearance_valid, 
@@ -274,6 +288,11 @@ class Trainer:
                 zero_count += 1
         print("Never Used Triplets: {}".format(zero_count))
 
+        # serializable_dict = {str(key): value for key, value in appearance_train.items()}
+        # with open(args.appearance_path, 'w', encoding='utf-8') as file:
+        #     json.dump(serializable_dict, file, ensure_ascii=False, indent=4)
+        logger.info("Train Appearance File is stored!!")
+
     @torch.no_grad()
     def _run_eval(self, epoch, step=0):
         metric_dict = self.eval_epoch(epoch)
@@ -311,19 +330,11 @@ class Trainer:
             outputs = self.model(**batch_dict)
             outputs = get_model_obj(self.model).compute_logits(output_dict=outputs, batch_dict=batch_dict)
             outputs = ModelOutput(**outputs)
-
             degree_tail = outputs.degree_tail
             logits, labels = outputs.logits, outputs.labels
-            logits_Contra_hr, logits_Contra_tail = outputs.logits_Contra_hr, outputs.logits_Contra_tail
-            L = outputs.Lambda
-
-            loss_origin = self.criterion(logits, labels) * degree_tail
-            loss_origin = mean_tensor(loss).to(logits.device)
-
-            loss_Contra = self.criterion_Contra(logits_Contra_hr, labels)
-            loss_Contra += self.criterion_Contra(logits_Contra_tail, labels)
-            loss = loss_origin + L * logits_Contra
-
+            loss = self.criterion(logits, labels) * degree_tail
+            # tail degree
+            loss = mean_tensor(loss).to(logits.device)
             losses.update(loss.item(), batch_size)
 
             acc1, acc3 = accuracy(logits, labels, topk=(1, 3))
@@ -345,12 +356,9 @@ class Trainer:
         top3 = AverageMeter('Acc@3', ':6.2f')
         inv_t = AverageMeter('InvT', ':6.2f')
         inv_b = AverageMeter('InvB', ':6.2f')
-        inv_tt = AverageMeter('InvTT', ':6.2f')
-        Lambda = AverageMeter('lambda', ':6.2f')
-
         progress = ProgressMeter(
             len(self.train_loader),
-            [losses, inv_t, inv_tt, inv_b, top1, top3],
+            [losses, inv_t, inv_b, top1, top3],
             prefix="Epoch: [{}]".format(epoch))
 
         for i, batch_dict in enumerate(self.train_loader):
@@ -370,24 +378,18 @@ class Trainer:
             outputs = get_model_obj(self.model).compute_logits(output_dict=outputs, batch_dict=batch_dict)
             outputs = ModelOutput(**outputs)
             logits, labels = outputs.logits, outputs.labels
-            assert logits.size(0) == batch_size
-
-            logits_Contra_hr, logits_Contra_tail = outputs.logits_Contra_hr, outputs.logits_Contra_tail
-            L = outputs.Lambda
             degree_head, degree_tail = outputs.degree_head, outputs.degree_tail
 
+            assert logits.size(0) == batch_size
             # head + relation -> tail
-            loss_origin_forward = self.criterion(logits, labels) * degree_tail
-            loss_origin = mean_tensor(loss_origin_forward).to(logits.device)
-
+            loss_forward = self.criterion(logits, labels) * degree_tail
+            loss = mean_tensor(loss_forward)
+            # loss_forward = mean_tensor(loss_forward).to(logits.device)
             # tail -> head + relation
-            loss_origin_backward = self.criterion(logits[:, :batch_size].t(), labels) * degree_head
-            loss_origin += mean_tensor(loss_origin_backward).to(logits.device)
+            loss_backward = self.criterion(logits[:, :batch_size].t(), labels) * degree_head
 
-            loss_Contra = self.criterion(logits_Contra_hr, labels)
-            loss_Contra += self.crieterion(logits_Contra_tail, labels)
-
-            loss = loss_origin + L * loss_Contra
+            # loss_backward = mean_tensor(loss_backward).to(logits.device)
+            loss += mean_tensor(loss_backward)
 
             acc1, acc3 = accuracy(logits, labels, topk=(1, 3))
             top1.update(acc1.item(), batch_size)
@@ -395,9 +397,6 @@ class Trainer:
 
             inv_t.update(outputs.inv_t, 1)
             inv_b.update(outputs.inv_b, 1)
-            inv_tt.update(outputs.inv_tt, 1)
-            Lambda.update(L, 1)        
-            
             losses.update(loss.item(), batch_size)
 
             # compute gradient and do SGD step

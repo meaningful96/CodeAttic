@@ -106,6 +106,8 @@ class CustomBertModel(nn.Module, ABC):
             self.st_dict = pickle.load(fr)    
         
         """
+        # We do not use the shortest path length weight during validations
+
         with open(args.shortest_path_valid, 'rb') as f:
             self.valid_st_dict = pickle.load(f)
         """
@@ -226,9 +228,11 @@ class CustomBertModel(nn.Module, ABC):
         # Case 2.
         # st_weight = L2_norm(torch.log(st_weight) * self.log_inv_t) 
         # logits *= st_weight
-
-        # Case 3. ST Weight with Learnable parameter b
         """
+        
+        # """
+        # Ver1. Logits + Shortest Weight Matrix
+        # Case 3. ST Weight with Learnable parameter b  
         logits *= self.log_inv_t.exp()
         
         if not args.validation:
@@ -247,6 +251,7 @@ class CustomBertModel(nn.Module, ABC):
             # The ST weight is only for training because the validaiton Graph have too many disconnected Graph.
             st_margin = st_weight * self.log_inv_b.exp()
             logits += st_margin
+        # """
 
         degree_head = torch.zeros(logits.size(0)).to(logits.device) # head
         degree_tail = torch.zeros(logits.size(0)).to(logits.device) # tail
@@ -265,20 +270,6 @@ class CustomBertModel(nn.Module, ABC):
         degree_head = degree_head.log()
         degree_tail = degree_tail.log()
 
-        # """
-
-        """
-        # Giving different tau between hard negatives and easy negatives
-        # You need to add the args.tt on `config.py` file
-
-        hard = torch.ones(logits.size()).to(logits.device)
-        for i in range(0, logits.size(1), self.subgraph):
-            hard[i:(i+self.subgraph), i:(i+self.subgraph)] = self.log_inv_tt.exp()
-        hard[hard != self.log_inv_t.exp()] = self.log_inv_t.exp()
-
-        logits *= hard
-        """
-
         triplet_mask = batch_dict.get('triplet_mask', None)
         if triplet_mask is not None:
             logits.masked_fill_(~triplet_mask, -1e4)        
@@ -286,7 +277,7 @@ class CustomBertModel(nn.Module, ABC):
         if self.pre_batch > 0 and self.training:
             pre_batch_logits = self._compute_pre_batch_logits(hr_vector, tail_vector, batch_dict)
             logits = torch.cat([logits, pre_batch_logits], dim=-1)
-        
+
         if self.args.use_self_negative and self.training:
             head_vector = output_dict['head_vector']
             self_neg_logits = torch.sum(hr_vector * head_vector, dim=1) * self.log_inv_t.exp()

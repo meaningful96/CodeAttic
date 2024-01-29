@@ -25,7 +25,6 @@ python3 -u main.py \
 --valid-path "${DATA_DIR}/valid.txt.json" \
 --train-path-dict "${DATA_DIR}/train_string_proportional20_2000.pkl" \
 --valid-path-dict "${DATA_DIR}/valid_string_proportional20_2000.pkl" \
---appearance-path "${DATA_DIR}/appearance/weighted_uniform20_2000.json" \
 --shortest-path "${DATA_DIR}/train_st.pkl" \
 --degree-train "${DATA_DIR}/degree_train.json" \
 --degree-valid "${DATA_DIR}/degree_valid.json"  \
@@ -42,7 +41,7 @@ python3 -u main.py \
 --num-process 50 \
 --finetune-t \
 --finetune-B \
---B 1.01 \
+--B 10 \
 --epochs 50 \
 --workers 4 \
 --max-to-keep 5 "$@"

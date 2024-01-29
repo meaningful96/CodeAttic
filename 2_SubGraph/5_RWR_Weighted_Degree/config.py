@@ -39,8 +39,6 @@ parser.add_argument('--t', default=0.05, type=float,
 ## added by youmin
 parser.add_argument('--validation', default=False, action='store_true',
                     help='validation')
-parser.add_argument('--appearance-path', default='', type=str, metavar='N',
-                    help='path to store appearance data')
 parser.add_argument('--k-steps', default=5, type=int,
                     help='step size for randomwalk')
 parser.add_argument('--num-iter', default=100, type=int,

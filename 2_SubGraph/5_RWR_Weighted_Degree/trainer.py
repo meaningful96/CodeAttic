@@ -288,11 +288,6 @@ class Trainer:
                 zero_count += 1
         print("Never Used Triplets: {}".format(zero_count))
 
-        # serializable_dict = {str(key): value for key, value in appearance_train.items()}
-        # with open(args.appearance_path, 'w', encoding='utf-8') as file:
-        #     json.dump(serializable_dict, file, ensure_ascii=False, indent=4)
-        logger.info("Train Appearance File is stored!!")
-
     @torch.no_grad()
     def _run_eval(self, epoch, step=0):
         metric_dict = self.eval_epoch(epoch)
