@@ -73,10 +73,10 @@ def main(base_dir, dataset, num_cpu):
     degree_dict_train = get_degree_dict(nx_G_train)
     degree_dict_valid = get_degree_dict(nx_G_valid)
 
-    with open(outpath_degree_train, 'w', encoding='utf-8') as f:
-        json.dump(degree_dict_train, f)
-    with open(outpath_degree_valid, 'w', encoding='utf-8') as f:
-        json.dump(degree_dict_valid, f)
+    with open(outpath_degree_train, 'wb') as f:
+        pickle.dump(degree_dict_train, f)
+    with open(outpath_degree_valid, 'wb') as f:
+        pickle.dump(degree_dict_valid, f)
 
     del degree_dict_train
     del degree_dict_valid

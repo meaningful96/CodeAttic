@@ -37,7 +37,6 @@ python3 -u main.py \
 --subgraph-size 512 \
 --k-steps 20 \
 --num-iter 2000 \
---num-process 10 \
 --finetune-t \
 --finetune-B \
 --B 1000 \

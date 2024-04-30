@@ -45,8 +45,6 @@ parser.add_argument('--num-iter', default=100, type=int,
                     help='the number of iterations for randomwalk algorithm')
 parser.add_argument('--subgraph-size', default=16, type=int,
                     help='Subgraph Size')
-parser.add_argument('--num-process', default=30, type=int,
-                    help='process number')
 parser.add_argument('--B', default=1.01, type=float, metavar='N',
                     help='learnable parameter for shortest path weight')
 parser.add_argument('--shortest-path', default='', type=str, metavar='N',

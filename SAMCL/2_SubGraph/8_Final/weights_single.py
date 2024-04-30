@@ -92,67 +92,74 @@ def get_shortest_distance(nxGraph, center, tail_list):
 
     return center, sub_list
 
-def get_degree_weights(subgraph, nxGraph, num_cpu)
-    degree_dict = defaultdict(dict)
-    logger.info("Degree Dictionary!!")
-
-    with Pool(num_cpu) as p:
-        results = p.starmap(get_degree, [(nxGraph, center, subgraph[center]) for center in centers])
-    
-    for center, dh_list, dt_list in results:
-        degree_dict[center]['dh'] = dh_list
-        degree_dict[center]['dt'] = dt_list
+def get_degree_weights(subgraph, nxGraph):
+   degree_dict = defaultdict(dict)
+   logger.info("Degree Dictionary!!")
+   
+   for center in subgraph:
+       dh_list, dt_list = get_degree(nxGraph, center, subgraph[center])
+       degree_dict[center]['dh'] = dh_list
+       degree_dict[center]['dt'] = dt_list
+   
+   return degree_dict
 
 def get_degree(nxGraph, center, tail_list):
-    dh_list(np.zeros(len(tail_list)*2))
-    dt_list(np.zeros(len(tail_list)*2))
-    for i, triple in enumerate(tail_list):
-        dh = nxGraph.degree(triple[0])
-        dt = nxGraph.degree(triple[2])
-        dh_list[2*i] = dh
-        dh_list[2*i+1]= dt
-        dt_list[2*i] = dt
-        dt_list[2*i+1] = dh
-    return center, dh_list, dt_list
+   dh_list = np.zeros(len(tail_list)*2)
+   dt_list = np.zeros(len(tail_list)*2)
+   
+   for i, triple in enumerate(tail_list):
+       dh = nxGraph.degree(triple[0])
+       dt = nxGraph.degree(triple[2])
+       dh_list[2*i] = dh
+       dh_list[2*i+1] = dt
+       dt_list[2*i] = dt
+       dt_list[2*i+1] = dh
+   
+   return dh_list, dt_list
 
-def main(base_dir, dataset, num_cpu, k_step, n_iter, mode, distribution):
+
+def main(base_dir, dataset, num_cpu, k_step, n_iter, distribution):
     s = time.time()
 
     # Step 1) Path for Loading Data
-    data_file = f"{mode}.txt.json"
-    data_path = os.path.join(base_dir, dataset, data_file)
+    inpath_train = os.path.join(base_dir, dataset, 'train.txt.json')
+    inpath_valid = os.path.join(base_dir, dataset, 'valid.txt.json')
+    inpath_subgraphs_train = os.path.join(base_dir, dataset, "train_{antithetical}_{k_step}_{n_iter}.pkl")
+    inpath_subgraphs_valid = os.path.join(base_dir, dataset, "valid_{antithetical}_{k_step}_{n_iter}.pkl")
 
-    subgraph_file = f"{mode}_{distribution}_{k_step}_{n_iter}.pkl"
-    subgraph_path = os.path.join(base_dir, dataset, subgraph_file)
 
-    # Step 2) Path for Saving Data
-    # json: degree
-    # pkl : shortest path, subgraphs
-  
-    degree_weight_file = f"Degree_{mode}.json"
-    degree_weight_path = os.path.join(base_dir, dataset, degree_weight_file)
+    outpath_degree_train = os.path.join(base_dir, dataset, "Degree_train.pkl")
+    outpath_degree_valid = os.path.join(base_dir, dataset, "Degree_valid.pkl")
+    outpath_shortest_train = os.path.join(base_dir, dataset, "ShortestPath_train.pkl")
 
-    shortest_weight_file = f"ShortestPath_{mode}.pkl"
-    shortest_weight_path = os.path.join(base_dir, dataset, shortest_weight_file)
+   
+    # Step 2) Initialization
+    logger.info("Build NetworkX Graph!!")
+    nx_G_train = nxGraph(inpath_train)
+    nx_G_valid = nxGraph(inpath_valid)
 
-    logger.info("Start to make weigh files.")
-    # Step 3) Initialization
-    nx_G = nxGraph(data_path)
-    subgraphs = load_pkl(subgraph_path)
+    with open(inpath_subgraphs_train, 'rb') as f:
+        subgraphs_train = pickle.load(f)
+    with open(inpath_subgraphs_valid, 'rb') as f:
+        subgraphs_valid = pickle.load(f)
 
     # Step 4) Degree Weight Dictionary
     # degree_dict = get_degree_dict(nx_G, subgraphs)
-    degree_dict = get_degree_weights(subgraphs, nx_G, num_cpu)
-    with open(degree_weight_path, 'w', encoding='utf-8') as f:
-        json.dump(degree_dict, f)
+    degree_dict_train = get_degree_weights(subgraphs_train, nx_G_train)
+    degree_dict_valid = get_degree_weights(subgraphs_valid, nx_G_valid)
+    with open(outpath_degree_train, 'wb') as f1:
+        pickle.dump(degree_dict_train, f1)
+    with open(outpath_degree_valid, 'wb') as f2:
+        pickle.dump(degree_dict_valid, f2)
 
-    del degree_dict
+    del degree_dict_train
+    del degree_dict_valid
+    del subgraphs_valid
 
     # Step 5) Shortest Path Length Weight Dictionary
-    if mode == "train":
-        shortest_dict = get_spw_dict(subgraphs, nx_G, num_cpu)
-        with open(shortest_weight_path, 'wb') as file:
-            pickle.dump(shortest_dict, file)
+    shortest_dict = get_spw_dict(subgraphs, nx_G, num_cpu)
+    with open(outpath_shortest_train , 'wb') as file:
+        pickle.dump(shortest_dict, file)
     e = time.time()
     logger.info("Done!!")
     logger.info("Total Time: {}".format(datetime.timedelta(seconds = e- s)))
@@ -165,8 +172,7 @@ if __name__ == "__main__":
     parser.add_argument("--num-cpu", type=int, required=True, help="Number of CPUs for parallel processing")
     parser.add_argument("--k-step", type=int, required=True, help="Number of steps for the random walk")
     parser.add_argument("--n-iter", type=int, required=True, help="Number of iterations for the random walk")
-    parser.add_argument("--mode", type=str, choices=['train', 'valid'], required=True, help="mode")
     parser.add_argument("--distribution", type=str, choices=["uniform", "proportional", "antithetical"], required=True, help="distribution")
     args = parser.parse_args()
 
-    main(args.base_dir, args.dataset, args.num_cpu, args.k_step, args.n_iter, args.mode, args.distribution)
+    main(args.base_dir, args.dataset, args.num_cpu, args.k_step, args.n_iter, args.distribution)
