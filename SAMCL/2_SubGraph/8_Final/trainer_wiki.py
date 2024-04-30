@@ -15,7 +15,7 @@ from doc import Dataset, collate, load_data, Custom_Dataset
 from utils import AverageMeter, ProgressMeter
 from utils import save_checkpoint, delete_old_ckt, report_num_trainable_parameters, move_to_cuda, get_model_obj
 from metric import accuracy
-from models import build_model, ModelOutput
+from models_wiki import build_model, ModelOutput
 from dict_hub import build_tokenizer
 from logger_config import logger
 from config import args
@@ -62,39 +62,28 @@ class Trainer:
         args.warmup = 400
         self.scheduler = None
         self.best_metric = None
-
+        self.batch_size = args.batch_size
     def train_loop(self):
         if self.args.use_amp:
             self.scaler = torch.cuda.amp.GradScaler()
         start_train = time.time()
         train_data_all, candidates_num = Making_Subgraph_for_LKG(self.args.train_path_dict)
         valid_data_all, candidates_num = Making_Subgraph_for_LKG(self.args.train_path_dict)
-        step_size_train = len(train_data_all) * 2 //self.args.epochs
-        step_size_valid = len(valid_data_all) * 2 //self.args.epochs
+        step_size_train = len(train_data_all) * 2 //self.batch_size
+        step_size_valid = len(valid_data_all) * 2 //self.batch_size
 
         logger.info("Total Triples for Training: {}".format(len(train_data_all)))
         logger.info("Total Triples for Valiation: {}".format(len(valid_data_all)))
         logger.info("Step Size per Epoch for Training: {}".format(step_size_train))
         logger.info("Step Size per Epoch for Training: {}".format(step_size_valid))
         
-        self.scheduler = self._create_lr_scheduler(step_size_train//(self.batch_size*self.args.epochs*2))
+        num_training_steps = step_size_train * self.args.epochs
+
+        self.scheduler = self._create_lr_scheduler(num_training_steps)
 
         for epoch in range(self.args.epochs):
-            start_epoch = time.time()
-            if epoch <= self.args.epochs - 2:
-                train_data = train_data_all[:step_size_train]
-                valid_data = valid_data_all[:step_size_valid]
-                train_data_all = train_data_all[step_size_train:]
-                valid_data_all = valid_data_all[step_size_valid:]
-            
-            if epoch == self.args.epochs - 1:
-                train_data = train_data_all
-                valid_data = valid_data_all
-                del train_data_all
-                del valid_data_all
-
-            train_dataset = Custom_Dataset(data=train_data)
-            valid_dataset = Custom_Dataset(data=valid_data)
+            train_dataset = Custom_Dataset(data=train_data_all)
+            valid_dataset = Custom_Dataset(data=valid_data_all)
         
             self.train_loader = torch.utils.data.DataLoader(
                 train_dataset,
@@ -120,8 +109,9 @@ class Trainer:
             self.train_epoch(epoch)
 
             # validation
+            args.validation = True
             self._run_eval(epoch=epoch)
-
+            args.validation = False
             end_epoch = time.time()
             print("Time_per_Epoch = '{}'".format(datetime.timedelta(seconds = end_epoch - start_epoch)))
         end_train = time.time()

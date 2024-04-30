@@ -17,25 +17,24 @@ fi
 
 python3 -u main.py \
 --model-dir "${OUTPUT_DIR}" \
---pretrained-model microsoft/deberta-large \
+--pretrained-model microsoft/deberta-base \
 --pooling mean \
 --lr 5e-5 \
 --use-link-graph \
 --train-path "${DATA_DIR}/train.txt.json" \
 --valid-path "${DATA_DIR}/valid.txt.json" \
---train-path-dict "${DATA_DIR}/train_string_antithetical50_250.pkl" \
---valid-path-dict "${DATA_DIR}/valid_string_antithetical50_250.pkl" \
---shortest-path "${DATA_DIR}/train_st.pkl" \
---degree-train "${DATA_DIR}/degree_train.json" \
---degree-valid "${DATA_DIR}/degree_valid.json"  \
+--train-path-dict "${DATA_DIR}/train_antithetical_50_250.pkl" \
+--valid-path-dict "${DATA_DIR}/valid_antithetical_50_250.pkl" \
+--shortest-path "${DATA_DIR}/ShortestPath_train.pkl" \
+--degree-train "${DATA_DIR}/Degree_train.json" \
+--degree-valid "${DATA_DIR}/Degree_valid.json"  \
 --task ${TASK} \
---batch-size 768 \
+--batch-size 1024 \
 --print-freq 20 \
 --additive-margin 0.02 \
 --use-amp \
 --use-self-negative \
---pre-batch 0 \
---subgraph-size 384 \
+--subgraph-size 512 \
 --k-steps 20 \
 --num-iter 2000 \
 --num-process 10 \

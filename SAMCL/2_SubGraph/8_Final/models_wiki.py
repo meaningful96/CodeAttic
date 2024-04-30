@@ -98,23 +98,7 @@ class CustomBertModel(nn.Module, ABC):
         self.tail_bert = deepcopy(self.hr_bert).to("cuda:2") ##
         with open(args.shortest_path, 'rb') as file:
             self.st_dict = pickle.load(file)
-   
-        # Building NetworkX graph for extracting degree weights
-        self.train_data = json.load(open(args.train_path, 'r', encoding='utf-8'))
-        self.valid_data = json.load(open(args.valid_path, 'r', encoding='utf-8'))        
-        self.nxGraph_train = nx.Graph()
-        self.nxGraph_valid = nx.Graph()     
-
-        for item in self.train_data:
-            self.nxGraph_train.add_node(item["head_id"], label=item["head"])
-            self.nxGraph_train.add_node(item["tail_id"], label=item["tail"])
-            self.nxGraph_train.add_edge(item["head_id"], item["tail_id"], relation=item["relation"])
-        
-        for item in self.valid_data:
-            self.nxGraph_valid.add_node(item["head_id"], label=item["head"])
-            self.nxGraph_valid.add_node(item["tail_id"], label=item["tail"])
-            self.nxGraph_valid.add_edge(item["head_id"], item["tail_id"], relation=item["relation"])
-
+          
 
     def _encode(self, encoder, token_ids, mask, token_type_ids):
         outputs = encoder(input_ids=token_ids,
@@ -162,79 +146,30 @@ class CustomBertModel(nn.Module, ABC):
         labels = torch.arange(batch_size).to(hr_vector.device)
         logits = hr_vector.mm(tail_vector.t())
         batch_data = batch_dict['batch_triple']
-        batch_data_forward = batch_data[::2] 
         
         # Ver1. Logits + Shortest Weight Matrix
         # Case 3. ST Weight with Learnable parameter b  
-        
-        if not args.validation:
-            st_vector = torch.zeros(logits.size(0), 1).to(hr_vector.device)
+         
+        st_list = self.st_dict[batch_data[0]]
+        st_vector = torch.tensor(st_list).reshape(logits.size(0), 1)
+        st_weight = st_vector.mm(st_vector.t()).to(hr_vector.device)
+        st_weight.fill_diagonal_(1)
+        st_weight *= self.log_inv_b.exp()
 
-            source = batch_data_forward[0][0]
-            """
-            for i, triple in enumerate(batch_data_forward):
-                target = triple[2]
-                st = 1 / self.st_dict[source][target]
-                st_vector[2*i][0] = st
-                st_vector[2*i+1][0] = st
-            st_weight = st_vector.mm(st_vector.t()).to(hr_vector.device)
-            st_weight.fill_diagonal_(1)
-            """
-            # """
-            if source in self.st_dict:
-                for i, triple in enumerate(batch_data_forward):
-                    target = triple[2]
-                    if target in self.st_dict[source]:
-                        st = 1 / self.st_dict[source][target]
-                        st_vector[2*i][0] = st
-                        st_vector[2*i+1][0] = st
-                st_weight = st_vector.mm(st_vector.t()).to(hr_vector.device)
-                st_weight.fill_diagonal_(1)
-            else:
-                for i, triple in enumerate(batch_data_forward):
-                    target = triple[2]
-                    try:
-                        st = nx.shortest_path_length(self.nxGraph_train, source=source, target=target)
-                        if st == 0:
-                            st = 1
-                    except nx.NetworkXNoPath:
-                        st = 999
-                    except nx.NodeNotFound:
-                        st = 999
-                    st_vector[2*i][0] = 1/st
-                    st_vector[2*i+1][0] = 1/st
-                st_weight = st_vector.mm(st_vector.t()).to(hr_vector.device)
-                st_weight.fill_diagonal_(1)
-            # """
-            # Leave the original scoring function alone
-            # The multiplication between ST weight and the scoring function induces the large variation of the loss
-            # The large variation ratio is not good for deep learning model because it can cause the overfitting               
-            # The ST weight is only for training because the validaiton Graph have too many disconnected Graph.
-            st_margin = st_weight * self.log_inv_b.exp()
-            logits += st_margin
-       
-        del batch_data_forward
-
+        logits += st_weight
         logits *= self.log_inv_t.exp()
-        degree_head = torch.zeros(logits.size(0)).to(hr_vector.device) # head
-        degree_tail = torch.zeros(logits.size(0)).to(hr_vector.device) # tail
 
-        for i, triple in enumerate(batch_data):
-            head, tail = triple[0], triple[2]
-            if not args.validation:                 
-                # for numerical instability, we update log(degree weight)
-                # so that the degree of entity must be larger than 1.
-                dh = self.nxGraph_train.degree(head, 1) + 1 
-                dt = self.nxGraph_train.degree(tail, 1) + 1
+        del st_vector
+        del st_weight
 
-            if args.validation:
-                # for numerical instability, we update log(degree weight)
-                # so that the degree of entity must be larger than 1.
-                dh = self.nxGraph_valid.degree(head, 1) + 1 
-                dt = self.nxGraph_valid.degree(tail, 1) + 1
-            degree_head[i] = dh
-            degree_tail[i] = dt
-        
+        if not args.validation:
+            dh = self.degree_train[batch_data[0]]['dh']    
+            dt = self.degree_train[batch_data[0]]['dt']
+            dh, dt = torch.tensor(dh), torch.tensor(dt)
+        if args.validation:
+            dh = self.degree_valid[batch_data[0]]['dh']    
+            dt = self.degree_valid[batch_data[0]]['dt']
+            dh, dt = torch.tensor(dh), torch.tensor(dt)
         degree_head = degree_head.log()
         degree_tail = degree_tail.log()
 

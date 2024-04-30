@@ -434,9 +434,11 @@ def Making_Subgraph_for_LKG(path):
     cnt = 0
     for center in candidates:
         subgraph = path_dict[center]
+        subgraph[0] = center
         total_subgraph.extend(subgraph)
         cnt += len(subgraph)
     
+
     assert cnt == len(total_subgraph)
 
     total_subgraph = [{'head_id': head, 'relation': relation, 'tail_id': tail} for head, relation, tail in total_subgraph]

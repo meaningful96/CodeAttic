@@ -33,14 +33,14 @@ python3 -u main_wiki.py \
 --degree-valid "${DATA_DIR}/degree_valid.json" \
 --task "${TASK}" \
 --batch-size 1024 \
---print-freq 20 \
+--print-freq 50 \
 --additive-margin 0.02 \
 --use-amp \
 --use-self-negative \
 --subgraph-size 512 \
 --finetune-t \
 --finetune-B \
---B 1000
---epochs 10 \
---workers 3 \
+--B 1000 \
+--epochs 1 \
+--workers 5 \
 --max-to-keep 10 "$@"

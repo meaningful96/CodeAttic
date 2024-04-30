@@ -25,9 +25,9 @@ python3 -u main.py \
 --valid-path "$DATA_DIR/valid.txt.json" \
 --train-path-dict "$DATA_DIR/train_string_antithetical40_250.pkl" \
 --valid-path-dict "$DATA_DIR/valid_string_antithetical40_300.pkl" \
---shortest-path "$DATA_DIR/train_st.pkl" \
---degree-train "${DATA_DIR}/degree_train.json" \
---degree-valid "${DATA_DIR}/degree_valid.json" \
+--shortest-path "$DATA_DIR/ShortestPath_train.pkl" \
+--degree-train "${DATA_DIR}/Degree_train.json" \
+--degree-valid "${DATA_DIR}/Degree_valid.json" \
 --task ${TASK} \
 --batch-size 512 \
 --print-freq 50 \

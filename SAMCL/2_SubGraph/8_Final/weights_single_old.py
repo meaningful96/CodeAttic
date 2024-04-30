@@ -56,29 +56,41 @@ def get_spw_dict(subgraph, nxGraph, num_cpu):
     """
     s = time.time()
     centers = list(subgraph.keys())
-    
-    logger.info("SPW_Dictionray!!")
-    spw_dict = defaultdict(list)
-    
-    with Pool(num_cpu) as p:
-        results = p.starmap(get_shortest_distance, [(nxGraph, center, subgraph[center]) for center in centers])
+    keys = list(subgraph.keys())
+    logger.info("Transform!!")
 
-    for head, sub_list in results:
-        spw_dict[head] = sub_list
+    transform = defaultdict(list)
+    for key in keys:
+        head = key[0]
+        values = subgraph[key]
+        values = [ex[2] for ex in values]
+        values = list(set(values))
+        if head not in transform:
+            transform[head] = []
+        transform[head] = transform[head].extend(values)
+
+    del keys
+
+    for key in transform:
+        x[key] = list(set(transform[key]))
+
+    logger.info("SPW_Dictionray!!")
+    spw_dict = defaultdict(dict)
+    heads = list(transform.keys())
+
+    with Pool(num_cpu) as p:
+        results = p.starmap(get_shortest_distance, [(nxGraph, head, list(transform[head])) for head in heads])
+
+    for head, sub_dict in results:
+        spw_dict[head] = sub_dict
 
     e = time.time()
     logger.info(f"Time for building spw_dict: {datetime.timedelta(seconds=e-s)}")
     return spw_dict
 
-import numpy as np
-def get_shortest_distance(nxGraph, center, tail_list):
-    sub_list = list(np.zeros(len(tail_list)*2))
-    head = center[0]
- 
-    assert len(sub_list) == 1024
-
-    for i, triple in enumerate(tail_list):
-        tail = triple[2]
+def get_shortest_distance(nxGraph, head, tail_list):
+    sub_dict = {}
+    for tail in tail_list:
         try:
             st = nx.shortest_path_length(nxGraph, source=head, target=tail)
             if st == 0:
@@ -87,33 +99,8 @@ def get_shortest_distance(nxGraph, center, tail_list):
             st = 999
         except nx.NodeNotFound:
             st = 999
-        sub_list[2*i] = st
-        sub_list[2*i+1] = st
-
-    return center, sub_list
-
-def get_degree_weights(subgraph, nxGraph, num_cpu)
-    degree_dict = defaultdict(dict)
-    logger.info("Degree Dictionary!!")
-
-    with Pool(num_cpu) as p:
-        results = p.starmap(get_degree, [(nxGraph, center, subgraph[center]) for center in centers])
-    
-    for center, dh_list, dt_list in results:
-        degree_dict[center]['dh'] = dh_list
-        degree_dict[center]['dt'] = dt_list
-
-def get_degree(nxGraph, center, tail_list):
-    dh_list(np.zeros(len(tail_list)*2))
-    dt_list(np.zeros(len(tail_list)*2))
-    for i, triple in enumerate(tail_list):
-        dh = nxGraph.degree(triple[0])
-        dt = nxGraph.degree(triple[2])
-        dh_list[2*i] = dh
-        dh_list[2*i+1]= dt
-        dt_list[2*i] = dt
-        dt_list[2*i+1] = dh
-    return center, dh_list, dt_list
+        sub_dict[tail] = st
+    return head, sub_dict
 
 def main(base_dir, dataset, num_cpu, k_step, n_iter, mode, distribution):
     s = time.time()
@@ -132,7 +119,7 @@ def main(base_dir, dataset, num_cpu, k_step, n_iter, mode, distribution):
     degree_weight_file = f"Degree_{mode}.json"
     degree_weight_path = os.path.join(base_dir, dataset, degree_weight_file)
 
-    shortest_weight_file = f"ShortestPath_{mode}.pkl"
+    shortest_weight_file = f"ShortestPath_train.pkl"
     shortest_weight_path = os.path.join(base_dir, dataset, shortest_weight_file)
 
     logger.info("Start to make weigh files.")
@@ -141,8 +128,7 @@ def main(base_dir, dataset, num_cpu, k_step, n_iter, mode, distribution):
     subgraphs = load_pkl(subgraph_path)
 
     # Step 4) Degree Weight Dictionary
-    # degree_dict = get_degree_dict(nx_G, subgraphs)
-    degree_dict = get_degree_weights(subgraphs, nx_G, num_cpu)
+    degree_dict = get_degree_dict(nx_G, subgraphs)
     with open(degree_weight_path, 'w', encoding='utf-8') as f:
         json.dump(degree_dict, f)
 
