@@ -27,41 +27,6 @@ def L2_norm(matrix):
 def build_model(args) -> nn.Module:
     return CustomBertModel(args)
 
-def linkGraph(train_path:str):
-    Graph, Graph_tail, diGraph = defaultdict(set), defaultdict(set), defaultdict(set)
-    examples = json.load(open(train_path, 'r', encoding = 'utf-8'))
-    appearance = {}
-
-    for ex in examples:
-        head_id, relation, tail_id = ex['head_id'], ex['relation'], ex['tail_id']
-        appearance[(head_id, relation, tail_id)] = 0
-
-        if head_id not in Graph:
-            Graph[head_id] = set()
-        Graph[head_id].add((head_id, relation, tail_id))
-        
-        if tail_id not in Graph:
-            Graph[tail_id] = set()
-        Graph[tail_id].add((tail_id, relation, head_id))    
-
-    entities = list(Graph.keys())
-
-    return Graph, entities
-
-class LinkGraph:
-    def __init__(self, train_path:str):
-        self.Graph, _ = linkGraph(train_path)
-
-    def get_neighbor_ids(self, tail_id: str, n_hops: int) -> List[int]: # mapping: tail_id:str, List[str] -> tail_id:int, List[int]
-        if n_hops <= 0:
-            return []
-
-        neighbors = [item[2]for item in self.Graph.get(tail_id, set())]
-        distant_neighbors = []
-        
-        for neighbor in neighbors:
-            distant_neighbors.extend(self.get_neighbor_ids(neighbor, n_hops-1))
-        return list(set(neighbors + distant_neighbors)) 
 
 @dataclass
 class ModelOutput:
@@ -89,13 +54,13 @@ class CustomBertModel(nn.Module, ABC):
         self.tail_bert = deepcopy(self.hr_bert)
 
         self.subgraph = args.subgraph_size * 2   
-        
-        self.degree_train = json.load(open(args.degree_train, 'r', encoding='utf-8'))
-        self.degree_valid = json.load(open(args.degree_valid, 'r', encoding='utf-8'))
-        self.linkGraph_train = LinkGraph(args.train_path)
-        self.linkGraph_valid = LinkGraph(args.valid_path)
+       
+        with open(args.degree_train, 'rb') as f:
+            self.degree_train = pickle.load(f)
+        with open(args.degree_valid, 'rb') as f:
+            self.degree_valid = pickle.load(f)
 
-        self.tail_bert = deepcopy(self.hr_bert).to("cuda:2") ##
+        self.tail_bert = deepcopy(self.hr_bert)
         with open(args.shortest_path, 'rb') as file:
             self.st_dict = pickle.load(file)
           

@@ -60,8 +60,8 @@ def main(base_dir, dataset, num_cpu):
     inpath_train = os.path.join(base_dir, dataset, 'train.txt.json')
     inpath_valid = os.path.join(base_dir, dataset, 'valid.txt.json')
 
-    outpath_degree_train = os.path.join(base_dir, dataset, "Degree_train.json")
-    outpath_degree_valid = os.path.join(base_dir, dataset, "Degree_valid.json")
+    outpath_degree_train = os.path.join(base_dir, dataset, "Degree_train.pkl")
+    outpath_degree_valid = os.path.join(base_dir, dataset, "Degree_valid.pkl")
     outpath_shortest_train = os.path.join(base_dir, dataset, "ShortestPath_train.pkl")
 
     logger.info("Build NetworkX Graph!!")
