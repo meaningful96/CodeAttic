@@ -73,8 +73,6 @@ class Trainer:
         logger.info("Train dataset length: {}".format(dataset_length))
         logger.info("Valid dataset length: {}".format(valid_length))
        
-        self.train_Graph, self.train_Graph_tail, self.train_diGraph, self.train_appearance, self.train_entities = build_graph(args.train_path)
-        self.valid_Graph, self.valid_Graph_tail, self.valid_diGraph, self.valid_appearance, self.valid_entities = build_graph(args.valid_path)
 
         """
         # Start to Random Walk
@@ -380,7 +378,7 @@ class Trainer:
 
     def _setup_training(self):
         if torch.cuda.device_count() > 1:
-            self.model = torch.nn.DataParallel(self.model, device_ids = [0,1,2,3,4,5,6]).to("cuda:0")
+            self.model = torch.nn.DataParallel(self.model, device_ids = [1,0,2,3,5,6]).to("cuda:1")
             # loss_backward = mean_tensor(loss_backward).to(logits.device)
         elif torch.cuda.is_available():
             self.model.cuda()

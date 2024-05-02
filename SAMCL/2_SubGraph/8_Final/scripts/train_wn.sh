@@ -17,7 +17,7 @@ fi
 
 python3 -u main.py \
 --model-dir "${OUTPUT_DIR}" \
---pretrained-model microsoft/deberta-base \
+--pretrained-model microsoft/deberta-large \
 --pooling mean \
 --lr 5e-5 \
 --use-link-graph \
@@ -29,12 +29,12 @@ python3 -u main.py \
 --degree-train "${DATA_DIR}/Degree_train.json" \
 --degree-valid "${DATA_DIR}/Degree_valid.json"  \
 --task ${TASK} \
---batch-size 1024 \
+--batch-size 512 \
 --print-freq 20 \
 --additive-margin 0.02 \
 --use-amp \
 --use-self-negative \
---subgraph-size 512 \
+--subgraph-size 256 \
 --k-steps 20 \
 --num-iter 2000 \
 --finetune-t \

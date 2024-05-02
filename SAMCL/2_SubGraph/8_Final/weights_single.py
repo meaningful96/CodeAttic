@@ -124,8 +124,8 @@ def main(base_dir, dataset, num_cpu, k_step, n_iter, distribution):
     # Step 1) Path for Loading Data
     inpath_train = os.path.join(base_dir, dataset, 'train.txt.json')
     inpath_valid = os.path.join(base_dir, dataset, 'valid.txt.json')
-    inpath_subgraphs_train = os.path.join(base_dir, dataset, "train_{antithetical}_{k_step}_{n_iter}.pkl")
-    inpath_subgraphs_valid = os.path.join(base_dir, dataset, "valid_{antithetical}_{k_step}_{n_iter}.pkl")
+    inpath_subgraphs_train = os.path.join(base_dir, dataset, f"train_{distribution}_{k_step}_{n_iter}.pkl")
+    inpath_subgraphs_valid = os.path.join(base_dir, dataset, f"valid_{distribution}_{k_step}_{n_iter}.pkl")
 
 
     outpath_degree_train = os.path.join(base_dir, dataset, "Degree_train.pkl")
@@ -155,9 +155,10 @@ def main(base_dir, dataset, num_cpu, k_step, n_iter, distribution):
     del degree_dict_train
     del degree_dict_valid
     del subgraphs_valid
+    del nx_G_valid
 
     # Step 5) Shortest Path Length Weight Dictionary
-    shortest_dict = get_spw_dict(subgraphs, nx_G, num_cpu)
+    shortest_dict = get_spw_dict(subgraphs_train, nx_G_train, num_cpu)
     with open(outpath_shortest_train , 'wb') as file:
         pickle.dump(shortest_dict, file)
     e = time.time()

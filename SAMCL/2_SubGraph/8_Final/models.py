@@ -171,7 +171,6 @@ class CustomBertModel(nn.Module, ABC):
             st_vector = torch.zeros(logits.size(0), 1).to(hr_vector.device)
 
             source = batch_data_forward[0][0]
-            """
             for i, triple in enumerate(batch_data_forward):
                 target = triple[2]
                 st = 1 / self.st_dict[source][target]
@@ -179,33 +178,7 @@ class CustomBertModel(nn.Module, ABC):
                 st_vector[2*i+1][0] = st
             st_weight = st_vector.mm(st_vector.t()).to(hr_vector.device)
             st_weight.fill_diagonal_(1)
-            """
-            # """
-            if source in self.st_dict:
-                for i, triple in enumerate(batch_data_forward):
-                    target = triple[2]
-                    if target in self.st_dict[source]:
-                        st = 1 / self.st_dict[source][target]
-                        st_vector[2*i][0] = st
-                        st_vector[2*i+1][0] = st
-                st_weight = st_vector.mm(st_vector.t()).to(hr_vector.device)
-                st_weight.fill_diagonal_(1)
-            else:
-                for i, triple in enumerate(batch_data_forward):
-                    target = triple[2]
-                    try:
-                        st = nx.shortest_path_length(self.nxGraph_train, source=source, target=target)
-                        if st == 0:
-                            st = 1
-                    except nx.NetworkXNoPath:
-                        st = 999
-                    except nx.NodeNotFound:
-                        st = 999
-                    st_vector[2*i][0] = 1/st
-                    st_vector[2*i+1][0] = 1/st
-                st_weight = st_vector.mm(st_vector.t()).to(hr_vector.device)
-                st_weight.fill_diagonal_(1)
-            # """
+
             # Leave the original scoring function alone
             # The multiplication between ST weight and the scoring function induces the large variation of the loss
             # The large variation ratio is not good for deep learning model because it can cause the overfitting               
@@ -213,7 +186,6 @@ class CustomBertModel(nn.Module, ABC):
             st_margin = st_weight * self.log_inv_b.exp()
             logits += st_margin
        
-        del batch_data_forward
 
         logits *= self.log_inv_t.exp()
         degree_head = torch.zeros(logits.size(0)).to(hr_vector.device) # head

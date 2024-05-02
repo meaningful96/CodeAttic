@@ -351,6 +351,7 @@ def process_triple_final(data, example, obj, k_steps, num_iter, distribution, su
         margin = subgraph_size - len(subgraph)
         tmp = random.sample(data, subgraph_size)
         subgraph.extend(tmp)
+        subgraph[0] = 
         
     return subgraph
 

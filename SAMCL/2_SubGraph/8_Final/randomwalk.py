@@ -12,6 +12,8 @@ import pickle
 import time
 import json
 import copy
+import gc
+
 
 def build_graph(train_path:str):
     Graph, Graph_tail, diGraph = defaultdict(set), defaultdict(set), defaultdict(set)
@@ -40,14 +42,39 @@ def build_graph(train_path:str):
 
     return Graph, Graph_tail, diGraph, appearance, entities
 
-def build_nxGraph(train_data):
-    graph = nx.Graph()
-    for ex in train_data:
-        graph.add_node(ex['head_id'], label=ex['head'])
-        graph.add_node(ex['tail_id'], label=ex['tail'])
-        graph.add_edge(ex['head_id'], ex['tail_id'], relatio=ex['relation'])
-    return graph
 
+def build_nxGraph(path:str):
+    Graph = nx.Graph()
+    diGraph = nx.DiGraph()
+    data = json.load(open(path, 'r', encoding='utf-8'))
+    for ex in data:
+        h,r,t = ex['head_id'], ex['relation'], ex['tail_id']
+        Graph.add_node(h)
+        Graph.add_node(t)
+        Graph.add_edge(h,t, relation=r)
+
+        diGraph.add_node(h)
+        diGraph.add_node(t)
+        diGraph.add_edge(h, t, relation=r)
+
+    del data
+    gc.collect()
+
+    entities = list(Graph.nodes())
+    return Graph, diGraph, entities
+
+def build_appearance(path:str):
+    data = json.load(open(path, 'r', encoding='utf-8'))
+    appearance = defaultdict(int)
+    for ex in data:
+        h,r,t = ex['head_id'], ex['relation'], ex['tail_id'] 
+        triple = (h,r,t)
+        appearance[triple] = 0
+
+    del data
+    gc.collect()
+
+    return appearance
 
 def rearrange_list(input_list):
     output_list = [(h, r, t) for (t, r, h) in input_list]
@@ -63,65 +90,63 @@ def Shuffle(input_list):
 def weighted_random_selection(prob_distribution):
     # Generating a list of indices based on the probability distribution
     indices = list(range(len(prob_distribution)))
-    
     # Performing weighted random selection for a single trial
     selected_index = random.choices(indices, weights=prob_distribution, k=1)[0]
-
     return selected_index
-
-
-
+        
 class Biased_RandomWalk:
-    def __init__(self, train_path:str):
-        self.Graph, self.Graph_tail, self.diGraph, self.appearance, self.entities = build_graph(train_path)
-        logger.info("Done building Link Graph with {} nodes".format(len(self.Graph)))
-        logger.info("Done building Directed Graph with {} nodes".format(len(self.diGraph)))
+    def __init__(self, train_path: str):
+        num_processes = 5
+        s = time.time()
+        self.Graph, self.diGraph, self.entities = build_nxGraph(train_path)
 
-        self.train_dataset = json.load(open(train_path, 'r', encoding='utf-8'))
+        self.degree_prob = defaultdict(list)
+        chunk_size = len(self.entities) // num_processes
+        entity_chunks = [self.entities[i:i + chunk_size] for i in range(0, len(self.entities), chunk_size)]
 
-        # NetworkX Graph
-        self.nxGraph = build_nxGraph(self.train_dataset)
-        self.degree_prob, self.degree_list = defaultdict(list), defaultdict(list)
-        
-        self.train_dataset = [] # no need to use
+        with multiprocessing.Pool(processes=num_processes) as pool:
+            degree_prob_list = pool.map(self.process_entities, entity_chunks)
 
-        for entity in self.entities:
-            neighbors = self.get_neighbor_ent_ids(entity)
-            prob_proportional = list(np.zeros(len(neighbors)))
-            degree_ent = list(np.zeros(len(neighbors)))
+        for chunk_degree_prob in degree_prob_list:
+            for entity, prob in chunk_degree_prob.items():
+                self.degree_prob[entity].extend(prob)
+
+        del self.entities
+        gc.collect()
+
+        e = time.time()
+        logger.info(f"Done Class Initialization: {datetime.timedelta(seconds=e-s)}")
+
+    def process_entities(self, entities):
+        chunk_degree_prob = defaultdict(list)
+        for entity in entities:
+            neighbors = list(self.Graph.neighbors(entity))
+            prob_proportional = np.zeros(len(neighbors))
+            prob_antithetical = np.zeros(len(neighbors))
             for i, neighbor in enumerate(neighbors):
-                prob_proportional[i] = self.nxGraph.degree(neighbor)
-                degree_ent[i] = neighbor
-            prob_antithetical = [1/degree for degree in prob_proportional]
-            self.degree_prob[entity].extend([prob_proportional, prob_antithetical])
-            self.degree_list[entity].extend(degree_ent)            
-                    
+                d = self.Graph.degree(neighbor)
+                prob_proportional[i] = d
+                prob_antithetical[i] = 1/d
+            chunk_degree_prob[entity].extend([prob_proportional, prob_antithetical])
+        return chunk_degree_prob
+ 
 
-    def get_neighbor_ids(self, tail_id: str, n_hops: int) -> List[int]: # mapping: tail_id:str, List[str] -> tail_id:int, List[int]
-        if n_hops <= 0:
-            return []
-
-        neighbors = [item[2] for item in self.Graph.get(tail_id, set())]
-        distant_neighbors = []
-        
-
-        for neighbor in neighbors:
-            distant_neighbors.extend(self.get_neighbor_ids(neighbor, n_hops-1))
-        return list(set(neighbors + distant_neighbors))
-
-    def get_neighbor_ent_ids(self, entity_id: int) -> List[int]:
-        neighbor_ids = self.Graph_tail.get(entity_id, set())
-        return sorted(list(neighbor_ids))
+    def find_triple(self, diGraph, e1, e2):
+        if diGraph.has_edge(e1, e2):
+            relation = diGraph.edges[e1, e2]['relation']
+            triple = (e1, relation, e2)
+        elif diGraph.has_edge(e2, e1):
+            relation = diGraph.edges[e2, e1]['relation']
+            triple = (e2, relation, e1)
+        return triple
+                
 
     def randomwalk(self, head_id:str, relation:str, tail_id:str, k_steps:int, num_iter:int, distribution: str) -> List[list]:
-        graph = self.Graph
-        directed_graph = self.diGraph
-        degree_prob = self.degree_prob # [0]: Degree Proportional, [1]: Degree Antithetical
         center_triple = (head_id, relation, tail_id)
         
         # Step 0. Initialization 
         subgraph_candidates = []         
-        nh, nt = len(self.get_neighbor_ent_ids(head_id)), len(self.get_neighbor_ent_ids(tail_id))
+        nh, nt = len(list(self.Graph.neighbors(head_id))), len(list(self.Graph.neighbors(tail_id)))
         center_ent = [head_id, tail_id]    
         center_pro, center_ant = [nh, nt], [1/nh, 1/nt]
 
@@ -136,22 +161,19 @@ class Biased_RandomWalk:
 
         # Step 1. Selecting the Start Point
         cnt =  0
-        while cnt <= num_iter:
-            
-            
+        iterations = num_iter
+
+        while cnt <= iterations:            
             # Uniform Distribution
             if distribution == "uniform":
                 current_entity = random.choice([head_id, tail_id])
-            
-            
             # Degree Proportional
             if distribution == 'proportional':
-                current_entity = center_ent[weighted_random_selection(center_pro)]
-            
-            
+                current_entity = center_ent[weighted_random_selection(center_pro)]            
             # Degree Antithetical
             if distribution == 'antithetical': 
                 current_entity = center_ent[weighted_random_selection(center_ant)]
+
 
             # Step 2. Random Walk with Restart(RWR)
             prob_list = [r_prob, s_prob]
@@ -173,79 +195,60 @@ class Biased_RandomWalk:
                 # Walking toward the neighbors
                 if standard == 1:
 
-                    neighbors = self.get_neighbor_ent_ids(current_entity)
-                                      
+                    neighbors = list(self.Graph.neighbors(current_entity))                                      
                     if set(neighbors) - visited == 0:
                         candidate = random.choice(neighbors)
                         break
                     else:
                         # Uniform Distribution
                         if distribution == 'uniform':
-                            candidate = random.choice(list(neighbors))
+                            candidate = random.choice(neighbors)
                         
                         # Degree Proportional
                         if distribution == 'proportional':
-                            candidate_prob = degree_prob[current_entity][0] # Probability
-                            candidate_list = self.get_neighbor_ent_ids(current_entity)
+                            candidate_prob = self.degree_prob[current_entity][0]
                             selected_index = weighted_random_selection(candidate_prob)
-                            candidate = candidate_list[selected_index]
+                            candidate = neighbors[selected_index]
                        
                         # Degree Antithetical
                         if distribution == 'antithetical':
-                            candidate_prob = degree_prob[current_entity][1] # Probability
-                            candidate_list = self.get_neighbor_ent_ids(current_entity)
+                            candidate_prob = self.degree_prob[current_entity][1]
                             selected_index = weighted_random_selection(candidate_prob)
-                            candidate = candidate_list[selected_index]
+                            candidate = neighbors[selected_index]
 
                     visited.add(candidate)
-                    if current_entity in directed_graph.keys():
-                        for triple in directed_graph[current_entity]:
-                            if triple[2] == candidate:
-                                triples_list.append(triple)
-                                append = True
-                                
-                        if append == False:
-                            for triple in directed_graph[candidate]:
-                                if triple[2] == current_entity:
-                                    triples_list.append(triple)   
-                                    append = True
-                
-                    if current_entity not in directed_graph.keys():
-                        for triple in directed_graph[candidate]:
-                            if triple[2] == current_entity:
-                                triples_list.append(triple)
-                                append = True
-                    
-                    assert append == True, "No triple is appended!!"
-                    current_entity = candidate                                
-                
+                    triple = self.find_triple(self.diGraph, current_entity, candidate)
+                    triples_list.append(triple)                                
+                    current_entity = candidate                                                
                 standard = weighted_random_selection(prob_list)
+
             subgraph_candidates.extend(triples_list)
             subgraph_candidates = list(set(subgraph_candidates))
-            cnt += len(subgraph_candidates)
+            cnt += 1
         
-        subgraph_candidates = subgraph_candidates[:num_iter]
+        subgraph_candidates = subgraph_candidates
         return subgraph_candidates
-
+            
+     
 
 def Path_Dictionary(train_path, k_steps, num_iter, obj, num_process, distribution):
-    train_data = json.load(open(train_path, 'r', encoding='utf-8'))
+    data = json.load(open(train_path, 'r', encoding='utf-8'))
     triple_dict = defaultdict(list)
-    
-    data = train_data
+
     chunk_size = len(data) // num_process
     chunks = [data[i:i + chunk_size] for i in range(0, len(data), chunk_size)]
     logger.info("Start Biased Randomwalk with Restart!!")
     with multiprocessing.Pool(num_process) as pool:
-        results = pool.starmap(process_data_chunk, [(chunk, data, obj, k_steps, num_iter, train_data, distribution) for chunk in chunks])
+        results = pool.starmap(process_data_chunk, [(chunk, obj, k_steps, num_iter, data, distribution) for chunk in chunks])
 
     for chunk_result in results:
         for key, value in chunk_result.items():
             triple_dict[key].extend(value)
     return triple_dict
 
-def random_sample(train_data):
-    sample = random.sample(train_data, 1024)
+def random_sample(train_data, length, k_steps, num_iter):
+    margin = k_steps*num_iter - length
+    sample = random.sample(train_data, margin)
     
     all_path = []
     for ex in sample:
@@ -254,7 +257,7 @@ def random_sample(train_data):
     
     return all_path
 
-def process_data_chunk(chunk, data, obj, k_steps, num_iter, train_data, distribution):
+def process_data_chunk(chunk, obj, k_steps, num_iter, train_data, distribution):
     chunk_triple_dict = defaultdict(list)
 
     for example in chunk:
@@ -262,13 +265,14 @@ def process_data_chunk(chunk, data, obj, k_steps, num_iter, train_data, distribu
         center_triple = (head_id, relation, tail_id)
         all_path = obj.randomwalk(head_id, relation, tail_id, k_steps, num_iter, distribution)
         if len(all_path) < 1024:
-            tmp = random_sample(train_data)
+            tmp = random_sample(train_data, len(all_path), k_steps, num_iter)
             all_path.extend(tmp)
         chunk_triple_dict[center_triple].extend(all_path)
 
     return chunk_triple_dict
 
 def Making_Subgraph(path_dict, candidates, subgraph_size, appearance, batch_size):
+    
     total_subgraph = []
     batch_total, sub_total = [], []
     tmp1, tmp2 = [], []
@@ -296,7 +300,6 @@ def Making_Subgraph(path_dict, candidates, subgraph_size, appearance, batch_size
             if h not in hr_set and t not in hr_set:
                 subgraph.append(triple)
                 hr_set.add(h)
-
                 hr_set.add(t)
 
             if len(subgraph) >= subgraph_size:
@@ -346,8 +349,11 @@ import pickle
 import time
 import datetime
 import argparse
+# Assuming RandomWalk and Path_Dictionary are defined elsewhere in your code
+# from your_module import RandomWalk, Path_Dictionary
 
 def main(base_dir, dataset, k_step, n_iter, num_cpu, distribution, mode):
+
     train_file = f'{mode}.txt.json'
     train_path = os.path.join(base_dir, dataset, train_file)
 
@@ -357,19 +363,19 @@ def main(base_dir, dataset, k_step, n_iter, num_cpu, distribution, mode):
     # Assuming `subgraph` is defined or imported elsewhere
     path_dict = Path_Dictionary(train_path, k_step, n_iter, obj, num_cpu, distribution)
     ed = time.time()
-    logger.info("Time for Building Path Dictionary: {}".format(datetime.timedelta(seconds=ed - sd)))
+    logger.info("Time for Making BRWR Dictionary: {}".format(datetime.timedelta(seconds=ed - sd)))
 
     pkl_file = f'{mode}_{distribution}_{k_step}_{n_iter}.pkl'
     pkl_path = os.path.join(base_dir, dataset, pkl_file)
 
     with open(pkl_path, 'wb') as f:
         pickle.dump(path_dict, f)
-    print(f"Path Dictionary saved to {pkl_path}")
+    print(f"BRWR Dictionary saved to {pkl_path}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate and save path dictionary.")
-    parser.add_argument("--base-dir", type=str, required=True, help="base path")
-    parser.add_argument("--dataset", type=str, choices=['WN18RR', 'FB15k237', 'wiki5m_ind', 'wiki5m_trans'], required=True, help="Dataset name")
+    parser.add_argument("--base-dir", type=str, required=True, help="Path for data")
+    parser.add_argument("--dataset", type=str, choices=['WN18RR', 'FB15k237', 'wiki5m_ind', 'wiki5m_trans', 'YAGO3-10'], required=True, help="Dataset name")
     parser.add_argument("--k-step", type=int, required=True, help="Number of steps for the random walk")
     parser.add_argument("--n-iter", type=int, required=True, help="Number of iterations for the random walk")
     parser.add_argument("--num-cpu", type=int, required=True, help="Number of CPUs for parallel processing")
