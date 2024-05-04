@@ -105,6 +105,9 @@ class Trainer:
 
         self.train_data_dict = load_pkl(args.train_path_dict)
         self.valid_data_dict = load_pkl(args.valid_path_dict)
+        
+        _, _, _, self.train_appearance, _ = build_graph(args.train_path)
+        _, _, _, self.valid_appearance, _ = build_graph(args.valid_path)
 
         # Inintial triples
         self.train_initial_triples = random.sample(list(self.train_data_dict.keys()), self.train_num_candidates)
@@ -117,13 +120,10 @@ class Trainer:
     def train_loop(self):
         if self.args.use_amp:
             self.scaler = torch.cuda.amp.GradScaler()
-        
-        train_appearance = self.train_appearance
-        valid_appearance = self.valid_appearance
 
         start_train = time.time()
-        appearance_train = train_appearance
-        appearance_valid = valid_appearance
+        appearance_train = self.train_appearance
+        appearance_valid = self.valid_appearance
         for epoch in range(self.args.epochs):
             start_epoch = time.time()
             start_selection = time.time()

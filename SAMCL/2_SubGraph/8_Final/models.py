@@ -112,15 +112,15 @@ class CustomBertModel(nn.Module, ABC):
                                    mask=tail_mask,
                                    token_type_ids=tail_token_type_ids)
         
-        head_vector = self._encode(self.tail_bert,
-                                   token_ids=head_token_ids,
-                                   mask=head_mask,
-                                   token_type_ids=head_token_type_ids)
+        # head_vector = self._encode(self.tail_bert,
+        #                           token_ids=head_token_ids,
+        #                           mask=head_mask,
+        #                           token_type_ids=head_token_type_ids)
         
         # DataParallel only support tensor/dict
         return {'hr_vector': hr_vector,
-                'tail_vector': tail_vector,
-                'head_vector': head_vector}
+                'tail_vector': tail_vector}
+        #'head_vector': head_vector}
 
     def compute_logits(self, output_dict: dict, batch_dict: dict) -> dict:
         hr_vector, tail_vector = output_dict['hr_vector'], output_dict['tail_vector']
@@ -180,13 +180,15 @@ class CustomBertModel(nn.Module, ABC):
         if triplet_mask is not None:
             logits.masked_fill_(~triplet_mask, -1e4)        
 
+        """
         if self.args.use_self_negative and self.training:
             head_vector = output_dict['head_vector']
             self_neg_logits = (torch.sum(hr_vector * head_vector, dim=1) * self.log_inv_t.exp()).to(hr_vector.device)
             self_negative_mask = batch_dict['self_negative_mask'].to(hr_vector.device)
             self_neg_logits.masked_fill_(~self_negative_mask, -1e4)
             logits = torch.cat([logits, self_neg_logits.unsqueeze(1)], dim=-1)
-        
+        """     
+   
         return {'logits': logits,
                 'labels': labels,
                 'inv_t': self.log_inv_t.detach().exp(),

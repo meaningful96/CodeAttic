@@ -32,8 +32,8 @@ def mean_tensor(matrix):
 
 def load_pkl(path):
     with open(path, 'rb') as f:
-        loaded_dict = pickle.load(f)
-    return loaded_dict
+        loaded_data = pickle.load(f)
+    return loaded_data
 
 
 class Trainer:
@@ -62,13 +62,15 @@ class Trainer:
         args.warmup = 400
         self.scheduler = None
         self.best_metric = None
-        self.batch_size = args.batch_size
+        self.batch_size = args.batch_size 
+        self.degree_train, self.degree_valid = load_pkl(args.degree_train), load_pkl(args.degree_valid)
+        
     def train_loop(self):
         if self.args.use_amp:
             self.scaler = torch.cuda.amp.GradScaler()
         start_train = time.time()
-        train_data_all, candidates_num = Making_Subgraph_for_LKG(self.args.train_path_dict)
-        valid_data_all, candidates_num = Making_Subgraph_for_LKG(self.args.train_path_dict)
+        train_data_all = Making_Subgraph_for_LKG(self.args.train_path_dict)
+        valid_data_all = Making_Subgraph_for_LKG(self.args.train_path_dict)
         step_size_train = len(train_data_all) * 2 //self.batch_size
         step_size_valid = len(valid_data_all) * 2 //self.batch_size
 
@@ -156,9 +158,13 @@ class Trainer:
             outputs = self.model(**batch_dict)
             outputs = get_model_obj(self.model).compute_logits(output_dict=outputs, batch_dict=batch_dict)
             outputs = ModelOutput(**outputs)
-            degree_tail = outputs.degree_tail
+
+            degree_tail = self.degree_valid[1][i*args.batch_size:((i+1)*args.batch_size)]
             logits, labels = outputs.logits, outputs.labels
+            degree_tail = torch.tensor(degree_tail).reshape(logits.size(0)).to(logits.device)
+
             loss = self.criterion(logits, labels) * degree_tail
+
             # tail degree
             loss = mean_tensor(loss).to(logits.device)
             losses.update(loss.item(), batch_size)
@@ -189,6 +195,7 @@ class Trainer:
 
         train_loss = []
         for i, batch_dict in enumerate(self.train_loader):
+            degree_head = self.degree_train[0][i*args.batch_size:((i+1)*args.batch_size)]
             # switch to train mode
             self.model.train()
 
@@ -206,7 +213,11 @@ class Trainer:
             outputs = get_model_obj(self.model).compute_logits(output_dict=outputs, batch_dict=batch_dict)
             outputs = ModelOutput(**outputs)
             logits, labels = outputs.logits, outputs.labels
-            degree_head, degree_tail = outputs.degree_head, outputs.degree_tail
+            degree_head = self.degree_train[0][i*args.batch_size:((i+1)*args.batch_size)]
+            degree_tail = self.degree_train[1][i*args.batch_size:((i+1)*args.batch_size)]
+
+            degree_head = torch.tensor(degree_head).reshape(logits.size(0)).to(logits.device)
+            degree_tail = torch.tensor(degree_tail).reshape(logits.size(0)).to(logits.device)
 
             assert logits.size(0) == batch_size
             # head + relation -> tail

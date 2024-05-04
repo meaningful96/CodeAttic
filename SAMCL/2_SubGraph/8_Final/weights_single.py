@@ -12,6 +12,7 @@ import datetime
 import time
 import gc
 import os
+import numpy as np
 
 
 def load_pkl(path:str):
@@ -34,43 +35,38 @@ def nxGraph(path:str):
         nx_G.add_edge(h, t, relation=r)
     return nx_G
 
-def get_degree_dict(nxGraph, subgraphs):
-    logger.info("Stage1: Degree Weight Dictionary")
-    s = time.time()
-    degree_dict = defaultdict(int)
-    entities = list(subgraphs.keys())
-    entities = [ex[0] for ex in entities]
-    for entity in entities:
-        d = nxGraph.degree(entity)
-        degree_dict[entity] = d
-    e = time.time()
-    logger.info(f"Time for building degree_dict: {datetime.timedelta(seconds = e-s)}")
+def get_degree_weights(subgraph, nxGraph):
+    total_dw = []
+    dh_total, dt_total = [], []
 
-    return degree_dict
+    for center in subgraph:
+        for triple in subgraph[center]:
+            dh = nxGraph.degree(triple[0])
+            dt = nxGraph.degree(triple[2])
+            dh_total.extend([dh, dt])
+            dt_total.extend([dt, dh])
+
+    total_dw.extend([dh_total, dt_total])
+    return total_dw
 
 def get_spw_dict(subgraph, nxGraph, num_cpu):
     logger.info("Stage2: Shortest Path Weight Dictionary")
-    """
-    # The key of the subgraph dictionary is the tuple of the center triple and the value is the list of subgraph triples.
-    # Calculate the distance between center triple's head and other triple's tail in the subgraph.
-    """
     s = time.time()
     centers = list(subgraph.keys())
-    
-    logger.info("SPW_Dictionray!!")
-    spw_dict = defaultdict(list)
+    centers = centers[:20]
+    logger.info("SPW_Dictionary!!")
+    total_sw = []
     
     with Pool(num_cpu) as p:
         results = p.starmap(get_shortest_distance, [(nxGraph, center, subgraph[center]) for center in centers])
 
-    for head, sub_list in results:
-        spw_dict[head] = sub_list
+    for sub_list in results:
+        total_sw.extend(sub_list)
 
     e = time.time()
     logger.info(f"Time for building spw_dict: {datetime.timedelta(seconds=e-s)}")
-    return spw_dict
+    return total_sw
 
-import numpy as np
 def get_shortest_distance(nxGraph, center, tail_list):
     sub_list = list(np.zeros(len(tail_list)*2))
     head = center[0]
@@ -90,33 +86,14 @@ def get_shortest_distance(nxGraph, center, tail_list):
         sub_list[2*i] = st
         sub_list[2*i+1] = st
 
-    return center, sub_list
+    return sub_list
 
-def get_degree_weights(subgraph, nxGraph):
-   degree_dict = defaultdict(dict)
-   logger.info("Degree Dictionary!!")
-   
-   for center in subgraph:
-       dh_list, dt_list = get_degree(nxGraph, center, subgraph[center])
-       degree_dict[center]['dh'] = dh_list
-       degree_dict[center]['dt'] = dt_list
-   
-   return degree_dict
-
-def get_degree(nxGraph, center, tail_list):
-   dh_list = np.zeros(len(tail_list)*2)
-   dt_list = np.zeros(len(tail_list)*2)
-   
-   for i, triple in enumerate(tail_list):
-       dh = nxGraph.degree(triple[0])
-       dt = nxGraph.degree(triple[2])
-       dh_list[2*i] = dh
-       dh_list[2*i+1] = dt
-       dt_list[2*i] = dt
-       dt_list[2*i+1] = dh
-   
-   return dh_list, dt_list
-
+def get_final_subgraphs(subgraph):
+    keys = list(subgraph.keys())
+    total_subgraphs = []
+    for key in keys:
+        total_subgraphs.extend(subgraph[key])
+    return total_subgraphs
 
 def main(base_dir, dataset, num_cpu, k_step, n_iter, distribution):
     s = time.time()
@@ -126,12 +103,13 @@ def main(base_dir, dataset, num_cpu, k_step, n_iter, distribution):
     inpath_valid = os.path.join(base_dir, dataset, 'valid.txt.json')
     inpath_subgraphs_train = os.path.join(base_dir, dataset, f"train_{distribution}_{k_step}_{n_iter}.pkl")
     inpath_subgraphs_valid = os.path.join(base_dir, dataset, f"valid_{distribution}_{k_step}_{n_iter}.pkl")
-
-
+    
+    outpath_subgraphs_train = os.path.join(base_dir, dataset, f"train_{distribution}_{k_step}_{n_iter}.pkl")
+    outpath_subgraphs_valid = os.path.join(base_dir, dataset, f"valid_{distribution}_{k_step}_{n_iter}.pkl")
+    
     outpath_degree_train = os.path.join(base_dir, dataset, "Degree_train.pkl")
     outpath_degree_valid = os.path.join(base_dir, dataset, "Degree_valid.pkl")
     outpath_shortest_train = os.path.join(base_dir, dataset, "ShortestPath_train.pkl")
-
    
     # Step 2) Initialization
     logger.info("Build NetworkX Graph!!")
@@ -143,24 +121,36 @@ def main(base_dir, dataset, num_cpu, k_step, n_iter, distribution):
     with open(inpath_subgraphs_valid, 'rb') as f:
         subgraphs_valid = pickle.load(f)
 
+    final_subgraphs_train = get_final_subgraphs(subgraphs_train)
+    final_subgraphs_valid = get_final_subgraphs(subgraphs_valid)
+    with open(outpath_subgraphs_train, 'wb') as f1:
+        pickle.dump(final_subgraphs_train, f1)
+        print("Done for subgraphs_train!!")
+    with open(outpath_subgraphs_valid, 'wb') as f2:
+        pickle.dump(final_subgraphs_valid, f2)
+        print("Done for subgraphs_valid!!")
+    
+    del final_subgraphs_train
+    del final_subgraphs_valid
+    
     # Step 4) Degree Weight Dictionary
-    # degree_dict = get_degree_dict(nx_G, subgraphs)
-    degree_dict_train = get_degree_weights(subgraphs_train, nx_G_train)
-    degree_dict_valid = get_degree_weights(subgraphs_valid, nx_G_valid)
+    final_degree_train = get_degree_weights(subgraphs_train, nx_G_train)
+    final_degree_valid = get_degree_weights(subgraphs_valid, nx_G_valid)   
     with open(outpath_degree_train, 'wb') as f1:
-        pickle.dump(degree_dict_train, f1)
+        pickle.dump(final_degree_train, f1)
     with open(outpath_degree_valid, 'wb') as f2:
-        pickle.dump(degree_dict_valid, f2)
+        pickle.dump(final_degree_valid, f2)
 
-    del degree_dict_train
-    del degree_dict_valid
+    del final_degree_train
+    del final_degree_valid
     del subgraphs_valid
     del nx_G_valid
 
     # Step 5) Shortest Path Length Weight Dictionary
-    shortest_dict = get_spw_dict(subgraphs_train, nx_G_train, num_cpu)
+    final_shortest_train = get_spw_dict(subgraphs_train, nx_G_train, num_cpu)
     with open(outpath_shortest_train , 'wb') as file:
-        pickle.dump(shortest_dict, file)
+        pickle.dump(final_shortest_train, file)
+     
     e = time.time()
     logger.info("Done!!")
     logger.info("Total Time: {}".format(datetime.timedelta(seconds = e- s)))

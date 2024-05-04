@@ -351,7 +351,7 @@ def process_triple_final(data, example, obj, k_steps, num_iter, distribution, su
         margin = subgraph_size - len(subgraph)
         tmp = random.sample(data, subgraph_size)
         subgraph.extend(tmp)
-        subgraph[0] = 
+        subgraph[0] = (head_id, relation, tail_id) 
         
     return subgraph
 
@@ -425,6 +425,8 @@ def Path_Dictionary_for_LKG2(data, appearance, obj, k_steps, num_iter, distribut
     logger.info(f"Done building Subgraph Dictionary: {datetime.timedelta(seconds = e - s)}")
     return subgraph_dict
 
+
+"""
 def Making_Subgraph_for_LKG(path):
 
     with open(path, 'rb') as f:
@@ -445,6 +447,12 @@ def Making_Subgraph_for_LKG(path):
     total_subgraph = [{'head_id': head, 'relation': relation, 'tail_id': tail} for head, relation, tail in total_subgraph]
     
     return total_subgraph, len(candidates)
+"""
+def Making_Subgraph_for_LKG(path):
+    with open(path, 'rb') as f:
+        total_subgraph = pickle.load(f)
+    total_subgraph = [{'head_id': head, 'relation': relation, 'tail_id': tail} for head, relation, tail in total_subgraph]
+    return total_subgraph
 
 import os
 import re

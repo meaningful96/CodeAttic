@@ -36,8 +36,6 @@ class ModelOutput:
     inv_b: torch.tensor
     hr_vector: torch.tensor
     tail_vector: torch.tensor
-    degree_head: torch.tensor
-    degree_tail: torch.tensor
 
 class CustomBertModel(nn.Module, ABC):
     def __init__(self, args):
@@ -48,22 +46,15 @@ class CustomBertModel(nn.Module, ABC):
         self.log_inv_b = torch.nn.Parameter(torch.tensor(1.0 / args.B).log(), requires_grad=args.finetune_B)
         self.add_margin = args.additive_margin
         self.batch_size = args.batch_size
-        self.offset = 0
+        self.idx = 0
 
         self.hr_bert = AutoModel.from_pretrained(args.pretrained_model)
         self.tail_bert = deepcopy(self.hr_bert)
 
         self.subgraph = args.subgraph_size * 2   
-       
-        with open(args.degree_train, 'rb') as f:
-            self.degree_train = pickle.load(f)
-        with open(args.degree_valid, 'rb') as f:
-            self.degree_valid = pickle.load(f)
-
-        self.tail_bert = deepcopy(self.hr_bert)
         with open(args.shortest_path, 'rb') as file:
-            self.st_dict = pickle.load(file)
-          
+            self.st_list = pickle.load(file)
+        
 
     def _encode(self, encoder, token_ids, mask, token_type_ids):
         outputs = encoder(input_ids=token_ids,
@@ -110,33 +101,19 @@ class CustomBertModel(nn.Module, ABC):
         batch_size = hr_vector.size(0)
         labels = torch.arange(batch_size).to(hr_vector.device)
         logits = hr_vector.mm(tail_vector.t())
-        batch_data = batch_dict['batch_triple']
         
-        # Ver1. Logits + Shortest Weight Matrix
-        # Case 3. ST Weight with Learnable parameter b  
-         
-        st_list = self.st_dict[batch_data[0]]
+        st_list = self.st_list[self.idx:self.idx+batch_size]
+        self.idx += batch_size
+        print(self.idx)
+        print(len(st_list))
         st_vector = torch.tensor(st_list).reshape(logits.size(0), 1)
         st_weight = st_vector.mm(st_vector.t()).to(hr_vector.device)
         st_weight.fill_diagonal_(1)
+        st_weight = st_weight.float()
         st_weight *= self.log_inv_b.exp()
 
         logits += st_weight
         logits *= self.log_inv_t.exp()
-
-        del st_vector
-        del st_weight
-
-        if not args.validation:
-            dh = self.degree_train[batch_data[0]]['dh']    
-            dt = self.degree_train[batch_data[0]]['dt']
-            dh, dt = torch.tensor(dh), torch.tensor(dt)
-        if args.validation:
-            dh = self.degree_valid[batch_data[0]]['dh']    
-            dt = self.degree_valid[batch_data[0]]['dt']
-            dh, dt = torch.tensor(dh), torch.tensor(dt)
-        degree_head = degree_head.log()
-        degree_tail = degree_tail.log()
 
         triplet_mask = batch_dict.get('triplet_mask', None).to(hr_vector.device)
         if triplet_mask is not None:
@@ -154,9 +131,7 @@ class CustomBertModel(nn.Module, ABC):
                 'inv_t': self.log_inv_t.detach().exp(),
                 'inv_b': self.log_inv_b.detach().exp(),
                 'hr_vector': hr_vector.detach(),
-                'tail_vector': tail_vector.detach(),
-                'degree_head': degree_head,
-                'degree_tail': degree_tail}
+                'tail_vector': tail_vector.detach()}
 
  
 

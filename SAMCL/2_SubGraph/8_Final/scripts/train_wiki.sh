@@ -26,8 +26,8 @@ python3 -u main_wiki.py \
 --lr 3e-5 \
 --train-path "${DATA_DIR}/train.txt.json" \
 --valid-path "${DATA_DIR}/valid.txt.json" \
---train-path-dict "${DATA_DIR}/train_antithetical_50_40.pkl" \
---valid-path-dict "${DATA_DIR}/valid_antithetical_50_40.pkl" \
+--train-path-dict "${DATA_DIR}/train_antithetical_60_300.pkl" \
+--valid-path-dict "${DATA_DIR}/valid_antithetical_60_300.pkl" \
 --shortest-path "${DATA_DIR}/ShortestPath_train.pkl" \
 --degree-train "${DATA_DIR}/Degree_train.pkl" \
 --degree-valid "${DATA_DIR}/Degree_valid.pkl" \
