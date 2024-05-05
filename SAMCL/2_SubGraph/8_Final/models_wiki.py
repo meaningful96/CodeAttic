@@ -101,11 +101,11 @@ class CustomBertModel(nn.Module, ABC):
         batch_size = hr_vector.size(0)
         labels = torch.arange(batch_size).to(hr_vector.device)
         logits = hr_vector.mm(tail_vector.t())
-        
+        if self.training:
+            logits -= torch.zeros(logits.size()).fill_diagonal_(self.add_margin).to(hr_vector.device)        
+
         st_list = self.st_list[self.idx:self.idx+batch_size]
         self.idx += batch_size
-        print(self.idx)
-        print(len(st_list))
         st_vector = torch.tensor(st_list).reshape(logits.size(0), 1)
         st_weight = st_vector.mm(st_vector.t()).to(hr_vector.device)
         st_weight.fill_diagonal_(1)

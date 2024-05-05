@@ -55,12 +55,6 @@ class CustomBertModel(nn.Module, ABC):
 
         self.subgraph = args.subgraph_size * 2   
         
-
-        with open(args.degree_train, 'rb') as f:
-            self.degree_train = pickle.load(f)
-        with open(args.degree_valid, 'rb') as f:
-            self.degree_valid = pickle.load(f)
-
         self.tail_bert = deepcopy(self.hr_bert)
         with open(args.shortest_path, 'rb') as file:
             self.st_dict = pickle.load(file)
@@ -126,13 +120,14 @@ class CustomBertModel(nn.Module, ABC):
         hr_vector, tail_vector = output_dict['hr_vector'], output_dict['tail_vector']
         batch_size = hr_vector.size(0)
         labels = torch.arange(batch_size).to(hr_vector.device)
-        logits = hr_vector.mm(tail_vector.t())
+
         batch_data = batch_dict['batch_triple']
         batch_data_forward = batch_data[::2] 
         
-        # Ver1. Logits + Shortest Weight Matrix
-        # Case 3. ST Weight with Learnable parameter b  
-        
+        logits = hr_vector.mm(tail_vector.t())
+        if self.training:
+            logits -= torch.zeros(logits.size()).fill_diagonal_(self.add_margin).to(hr_vector.device)
+       
         if not args.validation:
             st_vector = torch.zeros(logits.size(0), 1).to(hr_vector.device)
 
