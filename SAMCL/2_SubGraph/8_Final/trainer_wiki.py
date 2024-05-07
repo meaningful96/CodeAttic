@@ -70,7 +70,7 @@ class Trainer:
             self.scaler = torch.cuda.amp.GradScaler()
         start_train = time.time()
         train_data_all = Making_Subgraph_for_LKG(self.args.train_path_dict)
-        valid_data_all = Making_Subgraph_for_LKG(self.args.train_path_dict)
+        valid_data_all = Making_Subgraph_for_LKG(self.args.valid_path_dict)
         step_size_train = len(train_data_all) * 2 //self.batch_size
         step_size_valid = len(valid_data_all) * 2 //self.batch_size
 
@@ -86,7 +86,10 @@ class Trainer:
         for epoch in range(self.args.epochs):
             train_dataset = Custom_Dataset(data=train_data_all)
             valid_dataset = Custom_Dataset(data=valid_data_all)
-        
+            
+            del train_data_all
+            del valid_data_all
+
             self.train_loader = torch.utils.data.DataLoader(
                 train_dataset,
                 batch_size=args.batch_size,
@@ -158,8 +161,8 @@ class Trainer:
             outputs = self.model(**batch_dict)
             outputs = get_model_obj(self.model).compute_logits(output_dict=outputs, batch_dict=batch_dict)
             outputs = ModelOutput(**outputs)
-
             degree_tail = self.degree_valid[1][i*args.batch_size:((i+1)*args.batch_size)]
+
             logits, labels = outputs.logits, outputs.labels
             degree_tail = torch.tensor(degree_tail).reshape(logits.size(0)).to(logits.device)
 
@@ -213,6 +216,7 @@ class Trainer:
             outputs = get_model_obj(self.model).compute_logits(output_dict=outputs, batch_dict=batch_dict)
             outputs = ModelOutput(**outputs)
             logits, labels = outputs.logits, outputs.labels
+
             degree_head = self.degree_train[0][i*args.batch_size:((i+1)*args.batch_size)]
             degree_tail = self.degree_train[1][i*args.batch_size:((i+1)*args.batch_size)]
 
@@ -261,7 +265,7 @@ class Trainer:
 
     def _setup_training(self):
         if torch.cuda.device_count() > 1:
-            self.model = torch.nn.DataParallel(self.model, device_ids = [0,1,2,3,5,6]).to("cuda:0")
+            self.model = torch.nn.DataParallel(self.model, device_ids = [0,1,2,3,4,5]).to("cuda:0")
             # loss_backward = mean_tensor(loss_backward).to(logits.device)
         elif torch.cuda.is_available():
             self.model.cuda()

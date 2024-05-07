@@ -17,24 +17,24 @@ fi
 
 python3 -u main.py \
 --model-dir "${OUTPUT_DIR}" \
---pretrained-model microsoft/deberta-large \
+--pretrained-model microsoft/deberta-v3-base \
 --pooling mean \
 --lr 1e-5 \
 --use-link-graph \
 --train-path "$DATA_DIR/train.txt.json" \
 --valid-path "$DATA_DIR/valid.txt.json" \
---train-path-dict "$DATA_DIR/train_antithetical_40_300.pkl" \
+--train-path-dict "$DATA_DIR/train_antithetical_50_300.pkl" \
 --valid-path-dict "$DATA_DIR/valid_antithetical_40_300.pkl" \
 --shortest-path "$DATA_DIR/ShortestPath_train.pkl" \
 --degree-train "${DATA_DIR}/Degree_train.pkl" \
 --degree-valid "${DATA_DIR}/Degree_valid.pkl" \
 --task ${TASK} \
---batch-size 768 \
+--batch-size 1024 \
 --print-freq 50 \
 --additive-margin 0.02 \
 --use-amp \
 --use-self-negative \
---subgraph-size 384 \
+--subgraph-size 512 \
 --finetune-t \
 --finetune-B \
 --B 1000 \

@@ -355,19 +355,19 @@ def process_triple_final(data, example, obj, k_steps, num_iter, distribution, su
         
     return subgraph
 
-def Path_Dictionary_for_LKG1(train_path, obj, distribution):
+def Path_Dictionary_for_LKG1(train_path, obj, distribution, epoch):
     data = json.load(open(train_path, 'r', encoding='utf-8'))
 
     s = time.time()
     selected_candidates = Selecting_candidates(obj.Graph, data)
     e = time.time()
 
-    num_candidates = len(data) // 512
+    num_candidates = len(data) // 512 * epoch
     
     logger.info(f"The number of Final Candidates: {num_candidates}")
     logger.info(f"Time for Selecting: {datetime.timedelta(seconds=e-s)}")
 
-    batch_size = 100000
+    batch_size = 10
     num_batches = (len(selected_candidates) + batch_size - 1) // batch_size
 
     total_appearance = defaultdict(int)
@@ -403,7 +403,7 @@ def Path_Dictionary_for_LKG1(train_path, obj, distribution):
     return total_appearance, data
 
 
-def Path_Dictionary_for_LKG2(data, appearance, obj, k_steps, num_iter, distribution, subgraph_size):
+def Path_Dictionary_for_LKG2(data, appearance, obj, k_steps, num_iter, distribution, subgraph_size, epoch):
     logger.info(f"Step 2. Subgraph Sampling with Biased Random Walk with Restart!!")
     subgraph_dict = defaultdict(list)
     num_candidates = len(data) // subgraph_size
@@ -426,28 +426,6 @@ def Path_Dictionary_for_LKG2(data, appearance, obj, k_steps, num_iter, distribut
     return subgraph_dict
 
 
-"""
-def Making_Subgraph_for_LKG(path):
-
-    with open(path, 'rb') as f:
-        path_dict = pickle.load(f)
-
-    candidates = list(path_dict.keys())
-    total_subgraph = []
-    cnt = 0
-    for center in candidates:
-        subgraph = path_dict[center]
-        subgraph[0] = center
-        total_subgraph.extend(subgraph)
-        cnt += len(subgraph)
-    
-
-    assert cnt == len(total_subgraph)
-
-    total_subgraph = [{'head_id': head, 'relation': relation, 'tail_id': tail} for head, relation, tail in total_subgraph]
-    
-    return total_subgraph, len(candidates)
-"""
 def Making_Subgraph_for_LKG(path):
     with open(path, 'rb') as f:
         total_subgraph = pickle.load(f)
@@ -472,7 +450,7 @@ def merge_appearance_chunks(directory):
     
     return dict(merged_appearance)
 
-def main(base_dir, dataset, k_steps, num_iter, distribution, subgraph_size, mode):
+def main(base_dir, dataset, k_steps, num_iter, distribution,epoch, subgraph_size, mode):
     ## Step 1
     s = time.time()
     train_file = f'{mode}.txt.json'
@@ -493,7 +471,7 @@ def main(base_dir, dataset, k_steps, num_iter, distribution, subgraph_size, mode
     logger.info("Time for building appearance: {}".format(datetime.timedelta(seconds=e-s)))
 
     ## Step 2
-    subgraph_dicts = Path_Dictionary_for_LKG2(data, total_appearance, obj, k_steps, num_iter, distribution, subgraph_size)
+    subgraph_dicts = Path_Dictionary_for_LKG2(data, total_appearance, obj, k_steps, num_iter, distribution, subgraph_size, epoch)
     
     dict_file = f'{mode}_{distribution}_{k_steps}_{num_iter}.pkl'
     dict_path = os.path.join(base_dir, dataset, dict_file)
@@ -508,6 +486,7 @@ if __name__ == "__main__":
     parser.add_argument("--n-iter", type=int, default=20, required=True, help="Number of Iteration")
     parser.add_argument("--dataset", type=str, choices=['WN18RR', 'FB15k237', 'wiki5m_ind', 'wiki5m_trans', 'YAGO3-10'], required=True, help="Dataset name")
     parser.add_argument("--distribution", type=str, choices=['uniform', 'proportional', 'antithetical'], required=True, help="Distribution type")
+    parser.add_argument("--epoch", type=int, required=True, held="Training Epoch")
     parser.add_argument("--subgraph-size", type=int, default=512, required=True, help="Subgraph Size")
     parser.add_argument("--mode", type=str, choices=['train', 'valid'], required=True, help="Mode")
     args = parser.parse_args()
