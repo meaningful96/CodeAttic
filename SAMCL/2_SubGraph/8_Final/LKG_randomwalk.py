@@ -450,7 +450,7 @@ def merge_appearance_chunks(directory):
     
     return dict(merged_appearance)
 
-def main(base_dir, dataset, k_steps, num_iter, distribution,epoch, subgraph_size, mode):
+def main(base_dir, dataset, k_steps, num_iter, distribution, epoch, subgraph_size, mode):
     ## Step 1
     s = time.time()
     train_file = f'{mode}.txt.json'
@@ -486,9 +486,9 @@ if __name__ == "__main__":
     parser.add_argument("--n-iter", type=int, default=20, required=True, help="Number of Iteration")
     parser.add_argument("--dataset", type=str, choices=['WN18RR', 'FB15k237', 'wiki5m_ind', 'wiki5m_trans', 'YAGO3-10'], required=True, help="Dataset name")
     parser.add_argument("--distribution", type=str, choices=['uniform', 'proportional', 'antithetical'], required=True, help="Distribution type")
-    parser.add_argument("--epoch", type=int, required=True, held="Training Epoch")
+    parser.add_argument("--epoch", type=int, required=True, help="Training Epoch")
     parser.add_argument("--subgraph-size", type=int, default=512, required=True, help="Subgraph Size")
     parser.add_argument("--mode", type=str, choices=['train', 'valid'], required=True, help="Mode")
     args = parser.parse_args()
 
-    main(args.base_dir, args.dataset, args.k_steps, args.n_iter, args.distribution, args.subgraph_size, args.mode)
+    main(args.base_dir, args.dataset, args.k_steps, args.n_iter, args.distribution, args.epoch, args.subgraph_size, args.mode)

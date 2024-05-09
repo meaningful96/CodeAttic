@@ -1,8 +1,8 @@
 import os
 import glob
 
-from transformers import AutoTokenizer
-
+#from transformers import AutoTokenizer
+from transformers import DebertaV2Tokenizer
 from config import args
 from triplet import TripletDict, EntityDict, LinkGraph
 from logger_config import logger
@@ -11,8 +11,8 @@ train_triplet_dict: TripletDict = None
 all_triplet_dict: TripletDict = None
 link_graph: LinkGraph = None
 entity_dict: EntityDict = None
-tokenizer: AutoTokenizer = None
-
+#tokenizer: AutoTokenizer = None
+tokenizer: DebertaV2Tokenizer = None
 
 def _init_entity_dict():
     global entity_dict
@@ -61,11 +61,19 @@ def get_link_graph():
 
 def build_tokenizer(args):
     global tokenizer
+    
     if tokenizer is None:
-        tokenizer = AutoTokenizer.from_pretrained(args.pretrained_model)
+        # tokenizer = AutoTokenizer.from_pretrained(args.pretrained_model)
+        #"""
+        tokenizer = DebertaV2Tokenizer.from_pretrained(args.pretrained_model, verbose=False)
+        tokenizer.truncation = 'only_first'
+        tokenizer.return_overflowing_tokens = True
+        tokenizer.return_tensors = 'pt'
+
+        #"""
         logger.info('Build tokenizer from {}'.format(args.pretrained_model))
-
-
+        
+        
 def get_tokenizer():
     if tokenizer is None:
         build_tokenizer(args)

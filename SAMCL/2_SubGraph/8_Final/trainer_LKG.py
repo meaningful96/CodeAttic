@@ -48,8 +48,6 @@ class Trainer:
         self.model = build_model(self.args)
         # logger.info(self.model)
         self._setup_training()
-        self.k_steps = args.k_steps
-        self.num_iter = args.num_iter
         self.subgraph_size = args.subgraph_size
         
         # define loss function (criterion) and optimizer
@@ -85,6 +83,7 @@ class Trainer:
         self.scheduler = self._create_lr_scheduler(num_training_steps)
 
         for epoch in range(self.args.epochs):
+            start_epoch = time.time()
             if self.args.epochs == 1:
                 train_data = train_data_all
                 valid_data = valid_data_all
@@ -166,7 +165,9 @@ class Trainer:
 
         for i, batch_dict in enumerate(self.valid_loader):
             self.model.eval()
-
+            print("Eval Epoch")
+            print(len(self.degree_valid[0]))
+            print(len(self.degree_valid[1]))
             if torch.cuda.is_available():
                 batch_dict = move_to_cuda(batch_dict)
             batch_size = len(batch_dict['batch_data'])
@@ -178,8 +179,8 @@ class Trainer:
             if not self.args.epochs == 1:
                 degree_tail_batch = degree_epoch[i*args.batch_size:((i+1)*args.batch_size)]
             else:
-                degree_tail_batch = self.degree_valid[i*args.batch_size:((i+1)*args.batch_size)]
-                
+                degree_tail_batch = self.degree_valid[1][i*args.batch_size:((i+1)*args.batch_size)]
+                print(len(degree_tail_batch))
             logits, labels = outputs.logits, outputs.labels
             degree_tail_batch = torch.tensor(degree_tail_batch).reshape(logits.size(0)).to(logits.device)
 

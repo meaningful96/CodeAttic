@@ -51,8 +51,6 @@ class Trainer:
         self.model = build_model(self.args)
         # logger.info(self.model)
         self._setup_training()
-        self.k_steps = args.k_steps
-        self.num_iter = args.num_iter
         self.subgraph_size = args.subgraph_size
         
         self.train_loss = []

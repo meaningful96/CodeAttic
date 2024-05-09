@@ -6,7 +6,6 @@ from config import args
 from trainer_LKG import Trainer
 from logger_config import logger
 
-
 def main():
     ngpus_per_node = torch.cuda.device_count()
     cudnn.benchmark = True

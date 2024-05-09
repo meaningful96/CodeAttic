@@ -39,10 +39,6 @@ parser.add_argument('--t', default=0.05, type=float,
 ## added by youmin
 parser.add_argument('--validation', default=False, action='store_true',
                     help='validation')
-parser.add_argument('--k-steps', default=5, type=int,
-                    help='step size for randomwalk')
-parser.add_argument('--num-iter', default=100, type=int,
-                    help='the number of iterations for randomwalk algorithm')
 parser.add_argument('--subgraph-size', default=16, type=int,
                     help='Subgraph Size')
 parser.add_argument('--B', default=1.01, type=float, metavar='N',

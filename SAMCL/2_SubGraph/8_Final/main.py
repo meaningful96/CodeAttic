@@ -5,8 +5,8 @@ import torch.backends.cudnn as cudnn
 from config import args
 from trainer import Trainer
 from logger_config import logger
-
-
+import logging
+logging.getLogger("transformers").setLevel(logging.ERROR)
 def main():
     ngpus_per_node = torch.cuda.device_count()
     cudnn.benchmark = True
