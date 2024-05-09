@@ -17,7 +17,6 @@ from collections import defaultdict
 from triplet_mask import construct_mask
 from config import args
 import pickle
-import math
 
 import time
 import datetime
@@ -137,8 +136,10 @@ class CustomBertModel(nn.Module, ABC):
             for i, triple in enumerate(batch_data_forward):
                 target = triple[2]
                 st = 1 / self.st_dict[source][target]
-                st_vector[2*i][0] = math.sqrt(st)
-                st_vector[2*i+1][0] = math.sqrt(st)
+                st_vector[2*i][0] = st
+                st_vector[2*i+1][0] = st
+
+            st_vector = torch.sqrt(st_vector)
             st_weight = st_vector.mm(st_vector.t()).to(hr_vector.device)
             st_weight.fill_diagonal_(1)
 

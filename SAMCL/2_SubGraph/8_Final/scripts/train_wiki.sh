@@ -40,7 +40,7 @@ python3 -u main_wiki.py \
 --subgraph-size 512 \
 --finetune-t \
 --finetune-B \
---B 1000 \
+--B 10e3 \
 --epochs 1 \
 --workers 5 \
 --max-to-keep 10 "$@"
