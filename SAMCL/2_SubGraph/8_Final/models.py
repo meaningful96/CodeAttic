@@ -139,7 +139,7 @@ class CustomBertModel(nn.Module, ABC):
                 st_vector[2*i][0] = st
                 st_vector[2*i+1][0] = st
 
-            st_vector = torch.sqrt(st_vector)
+            # st_vector = torch.sqrt(st_vector)
             st_weight = st_vector.mm(st_vector.t()).to(hr_vector.device)
             st_weight.fill_diagonal_(1)
 

@@ -41,7 +41,7 @@ parser.add_argument('--validation', default=False, action='store_true',
                     help='validation')
 parser.add_argument('--subgraph-size', default=16, type=int,
                     help='Subgraph Size')
-parser.add_argument('--B', default=1.01, type=float, metavar='N',
+parser.add_argument('--B', default=10e4, type=float, metavar='N',
                     help='learnable parameter for shortest path weight')
 parser.add_argument('--shortest-path', default='', type=str, metavar='N',
                     help='path to store shortest path dict')

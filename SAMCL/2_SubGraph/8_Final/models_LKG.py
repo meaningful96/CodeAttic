@@ -54,7 +54,7 @@ class CustomBertModel(nn.Module, ABC):
 
         self.subgraph = args.subgraph_size * 2   
         with open(args.shortest_path, 'rb') as file:
-            self.st_list = pickle.load(file)
+            self.st_dict = pickle.load(file)
         
 
     def _encode(self, encoder, token_ids, mask, token_type_ids):
@@ -102,21 +102,22 @@ class CustomBertModel(nn.Module, ABC):
         batch_size = hr_vector.size(0)
         labels = torch.arange(batch_size).to(hr_vector.device)
         logits = hr_vector.mm(tail_vector.t())
+        
         if self.training:
             logits -= torch.zeros(logits.size()).fill_diagonal_(self.add_margin).to(hr_vector.device)        
+        
+        if not args.validation:
+            center_triple = batch_dict['batch_triple'][0] 
+            st_list = self.st_dict[center_triple]
+            st_vector = torch.tensor(st_list).reshape(logits.size(0), 1)
+            st_vector = torch.sqrt(st_vector)
+            st_weight = st_vector.mm(st_vector.t()).to(hr_vector.device)
+            st_weight.fill_diagonal_(1)
+            st_weight = st_weight.float()
+            st_weight *= self.log_inv_b.exp()
+            logits += st_weight
 
-        st_list = self.st_list[self.idx:self.idx+batch_size]
-        self.idx += batch_size
-        st_vector = torch.tensor(st_list).reshape(logits.size(0), 1)
-        st_vector = torch.sqrt(st_vector)
-        st_weight = st_vector.mm(st_vector.t()).to(hr_vector.device)
-        st_weight.fill_diagonal_(1)
-        st_weight = st_weight.float()
-        st_weight *= self.log_inv_b.exp()
-
-        logits += st_weight
         logits *= self.log_inv_t.exp()
-
         triplet_mask = batch_dict.get('triplet_mask', None).to(hr_vector.device)
         if triplet_mask is not None:
             logits.masked_fill_(~triplet_mask, -1e4)        
