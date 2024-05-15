@@ -177,7 +177,6 @@ class CustomBertModel(nn.Module, ABC):
         triplet_mask = batch_dict.get('triplet_mask', None).to(hr_vector.device)
         if triplet_mask is not None:
             logits.masked_fill_(~triplet_mask, -1e4)        
-
         
         if self.args.use_self_negative and self.training:
             head_vector = output_dict['head_vector']
@@ -186,7 +185,6 @@ class CustomBertModel(nn.Module, ABC):
             self_neg_logits.masked_fill_(~self_negative_mask, -1e4)
             logits = torch.cat([logits, self_neg_logits.unsqueeze(1)], dim=-1)
           
-   
         return {'logits': logits,
                 'labels': labels,
                 'inv_t': self.log_inv_t.detach().exp(),

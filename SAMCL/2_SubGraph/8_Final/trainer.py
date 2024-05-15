@@ -271,7 +271,7 @@ class Trainer:
         losses = AverageMeter('Loss', ':.4')
         top1 = AverageMeter('Acc@1', ':6.2f')
         top3 = AverageMeter('Acc@3', ':6.2f')
-
+        batch_size = args.batch_size
         for i, batch_dict in enumerate(self.valid_loader):
             self.model.eval()
 
@@ -303,7 +303,7 @@ class Trainer:
 
     
     def train_epoch(self, epoch):
-            # loss_backward = mean_tensor(loss_backward).to(logits.device)
+        batch_size = args.batch_size
         losses = AverageMeter('Loss', ':.4')
         top1 = AverageMeter('Acc@1', ':6.2f')
         top3 = AverageMeter('Acc@3', ':6.2f')

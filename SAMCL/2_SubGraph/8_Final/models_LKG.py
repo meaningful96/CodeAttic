@@ -107,7 +107,7 @@ class CustomBertModel(nn.Module, ABC):
             logits -= torch.zeros(logits.size()).fill_diagonal_(self.add_margin).to(hr_vector.device)        
         
         if not args.validation:
-            center_triple = batch_dict['batch_triple'][0] 
+            center_triple = tuple(batch_dict['batch_triple'][0])
             st_list = self.st_dict[center_triple]
             st_vector = torch.tensor(st_list).reshape(logits.size(0), 1)
             st_vector = torch.sqrt(st_vector)

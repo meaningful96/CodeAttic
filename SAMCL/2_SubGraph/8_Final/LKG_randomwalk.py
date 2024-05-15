@@ -453,25 +453,17 @@ def Path_Dictionary_for_LKG3(data, appearance, total_appearance, obj, k_steps, n
     assert len(final_candidates) == num_candidates
     assert len(center_list) % num_candidates == 0
 
-    cnt = 0
     # 1st Phase
     for triple in final_candidates:
-        logger.info(f"cnt: {cnt}")
         subgraph = process_triple_final(data, triple, obj, k_steps, num_iter, distribution, subgraph_size)
 
         for ex in subgraph:
             total_appearance[ex] += 1
 
         subgraph_dict[triple].extend(subgraph)
-        cnt += 1
-        if num_candidates < 100:
-            if cnt % 10 == 0:
-                logger.info(f"Done {cnt} Triples in Phase 1")
-        else:
-            if cnt % 5000 == 0:
-                logger.info(f"Done: {cnt}")
-           
-    print("Done Phase: 1")
+    
+    logger.info("Done Phase: 1")
+    logger.info(f"Number of Centers at Phase 1: {len(center_list)}")       
 
     # 2nd Phase ~
     for phase in range(phases - 1):
@@ -495,7 +487,10 @@ def Path_Dictionary_for_LKG3(data, appearance, total_appearance, obj, k_steps, n
                 subgraph = subgraph_dict[triple]
                 for ex in subgraph:
                     total_appearance[ex] += 1
-        print(f"Done Phase: {phase + 2}")
+        logger.info(f"Done Phase: {phase + 2}")
+        logger.info(f"Number of Centers: {len(center_list)}")
+    
+    assert len(center_list) == num_candidates*phases
 
     e = time.time()
     logger.info(f"Done building Subgraph Dictionary: {datetime.timedelta(seconds = e - s)}")

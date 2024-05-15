@@ -153,7 +153,7 @@ def main(base_dir, dataset, num_cpu, k_step, n_iter, subgraph_size, distribution
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate and save path dictionary.")
     parser.add_argument("--base-dir", type=str, required=True, help="Your base directory")    
-    parser.add_argument("--dataset", type=str, choices=['WN18RR', 'FB15k237', 'wiki5m_ind', 'wiki5m_trans'], required=True, help="Dataset name")
+    parser.add_argument("--dataset", type=str, choices=['WN18RR', 'FB15k237', 'wiki5m_ind', 'wiki5m_trans', 'YAGO3-10'], required=True, help="Dataset name")
     parser.add_argument("--num-cpu", type=int, required=True, help="Number of CPUs for parallel processing")
     parser.add_argument("--k-step", type=int, required=True, help="Number of steps for the random walk")
     parser.add_argument("--n-iter", type=int, required=True, help="Number of iterations for the random walk")

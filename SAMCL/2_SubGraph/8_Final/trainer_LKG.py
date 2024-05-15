@@ -67,17 +67,17 @@ class Trainer:
         if self.args.use_amp:
             self.scaler = torch.cuda.amp.GradScaler()
         start_train = time.time()
-        with open(args.train_path, 'rb') as f:
+        with open(args.train_path_dict, 'rb') as f:
             train_data_all = pickle.load(f)
-        with open(args.valid_path, 'rb') as f:
+        with open(args.valid_path_dict, 'rb') as f:
             valid_data_all = pickle.load(f)
 
         train_subgraph_dict = train_data_all[0]
         train_centers = train_data_all[1]
         del train_data_all
 
-        valid_subgraph_dict = train_data_all[0]
-        valid_centers = train_data_all[1]
+        valid_subgraph_dict = valid_data_all[0]
+        valid_centers = valid_data_all[1]
         del valid_data_all
 
         train_step_size = len(train_centers) // self.args.epochs
@@ -86,30 +86,28 @@ class Trainer:
         num_validation_steps = valid_step_size * self.args.epochs
         self.scheduler = self._create_lr_scheduler(num_training_steps)
 
+        logger.info(f"Total train_step: {len(train_centers)}")
+        logger.info(f"Step per Epoch: {train_step_size}")
+
+        num_center_train = len(train_centers) // self.args.epochs
+        num_center_valid = len(valid_centers) // self.args.epochs
+
         for epoch in range(self.args.epochs):
             start_epoch = time.time()
-            if self.args.epochs == 1:
-                train_subgraphs_all = Making_Subgraph_for_LKG(train_subgraph_dict, train_centers)
-                valid_subgraphs_all = Making_Subgraph_for_LKG(valid_subgraph_dict, valid_centers)             
-                train_dataset = Custom_Dataset(data=train_subgraphs_all)
-                valid_dataset = Custom_Dataset(data=valid_subgraphs_all)
-                
-                del train_data_subgraphs_all
-                del valid_data_subgraphs_all
+            train_centers_epoch = train_centers[num_center_train*epoch:num_center_train*(epoch+1)]
+            valid_centers_epoch = valid_centers[num_center_valid*epoch:num_center_valid*(epoch+1)]
 
-            else:
-                train_centers_epoch = train_centers[epoch*num_training_steps:(epoch+1)*num_training_steps]
-                valid_centers_epoch = valid_centers[epoch*num_validation_steps:(epoch+1)*num_validation_steps]                
+            assert len(train_centers_epoch) == num_center_train
+            assert len(valid_centers_epoch) == num_center_valid
+
+            train_subgraphs_all = Making_Subgraph_for_LKG(train_subgraph_dict, train_centers_epoch)
+            valid_subgraphs_all = Making_Subgraph_for_LKG(valid_subgraph_dict, valid_centers_epoch)             
+            train_dataset = Custom_Dataset(data=train_subgraphs_all)
+            valid_dataset = Custom_Dataset(data=valid_subgraphs_all)
                 
-                train_subgraphs_all = Making_Subgraph_for_LKG(train_subgraph_dict, train_centers_epoch)
-                valid_subgraphs_all = Making_Subgraph_for_LKG(valid_subgraph_dict, valid_centers) 
-                train_dataset = Custom_Dataset(data=train_subgraphs_all)
-                valid_dataset = Custom_Dataset(data=valid_subgraphs_all)
-                
-                del train_centers_epoch
-                del valid_centers_epoch
-                del train_data_subgraphs_all
-                del valid_data_subgraphs_all
+            del train_subgraphs_all
+            del valid_subgraphs_all
+
             
             self.train_loader = torch.utils.data.DataLoader(
                 train_dataset,
@@ -173,18 +171,19 @@ class Trainer:
         
         valid_loss = []
 
+        batch_size = args.batch_size
         for i, batch_dict in enumerate(self.valid_loader):
             self.model.eval()
             if torch.cuda.is_available():
                 batch_dict = move_to_cuda(batch_dict)
-            center_triple = batch_dict['batch_triple'][0] 
+            center_triple = tuple(batch_dict['batch_triple'][0]) 
 
             outputs = self.model(**batch_dict)
             outputs = get_model_obj(self.model).compute_logits(output_dict=outputs, batch_dict=batch_dict)
             outputs = ModelOutput(**outputs)
             
             logits, labels = outputs.logits, outputs.labels
-            degree_tail = self.degree_valid[center_triple]
+            degree_tail = self.degree_valid[center_triple][1]
             assert args.batch_size == len(degree_tail)
 
             degree_tail = torch.tensor(degree_tail).reshape(logits.size(0)).to(logits.device)
@@ -208,7 +207,7 @@ class Trainer:
         return metric_dict
     
     def train_epoch(self, epoch):
-            # loss_backward = mean_tensor(loss_backward).to(logits.device)
+        batch_size = args.batch_size
         losses = AverageMeter('Loss', ':.4')
         top1 = AverageMeter('Acc@1', ':6.2f')
         top3 = AverageMeter('Acc@3', ':6.2f')
@@ -227,7 +226,7 @@ class Trainer:
 
             if torch.cuda.is_available():
                 batch_dict = move_to_cuda(batch_dict)
-            center_triple = batch_dict['batch_triple'][0]
+            center_triple = tuple(batch_dict['batch_triple'][0])
 
             # compute output
             if self.args.use_amp:
@@ -239,7 +238,7 @@ class Trainer:
             outputs = ModelOutput(**outputs)
             logits, labels = outputs.logits, outputs.labels
 
-            degree_list = self.degree_train[center]
+            degree_list = self.degree_train[center_triple]
             degree_head = degree_list[0]
             degree_tail = degree_list[1]
 
@@ -251,13 +250,13 @@ class Trainer:
             degree_head = torch.tensor(degree_head).reshape(logits.size(0)).to(logits.device)
             degree_tail = torch.tensor(degree_tail).reshape(logits.size(0)).to(logits.device)
           
-            assert logits.size(0) == batch_size
+            assert logits.size(0) == args.batch_size
             # head + relation -> tail
             loss_forward = self.criterion(logits, labels) * degree_tail
             loss = mean_tensor(loss_forward)
             
             # tail -> head + relation
-            loss_backward = self.criterion(logits[:, :batch_size].t(), labels) * degree_head
+            loss_backward = self.criterion(logits[:, :args.batch_size].t(), labels) * degree_head
             loss += mean_tensor(loss_backward)
 
             acc1, acc3 = accuracy(logits, labels, topk=(1, 3))
@@ -293,7 +292,7 @@ class Trainer:
 
     def _setup_training(self):
         if torch.cuda.device_count() > 1:
-            self.model = torch.nn.DataParallel(self.model, device_ids = [0,1,2,3,4,5]).to("cuda:0")
+            self.model = torch.nn.DataParallel(self.model, device_ids = [1,2,3,4,5]).to("cuda:1")
             # loss_backward = mean_tensor(loss_backward).to(logits.device)
         elif torch.cuda.is_available():
             self.model.cuda()

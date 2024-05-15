@@ -72,19 +72,19 @@ def counting_loop(epochs, data_dict, initial_triples, subgraph_size, batch_size,
     print(f"Never Used Triplets: {zero_count}")
     print(f"Batch Duple: {sum(avg) / len(avg)}")
 if __name__ == "__main__":
-    path = './data/FB15k237/train_antithetical_50_300.pkl'
-    train_path = './data/FB15k237/train.txt.json'    
+    path = './data/WN18RR/train_antithetical_50_400.pkl'
+    train_path = './data/WN18RR/train.txt.json'    
     train_data = json.load(open(train_path, 'r', encoding='utf-8'))
 
     Graph, Graph_tail, diGraph, appearance, entities = build_graph(train_path)
     with open(path, 'rb') as f:
         data_dict = pickle.load(f)
 
-    subgraph_size = 1536
+    subgraph_size = 512
     batch_size = subgraph_size*2
     num_candidates = len(train_data)//batch_size
 
-    epochs = 20
+    epochs = 50
     initial_triples = random.sample(list(data_dict.keys()), num_candidates)
 
     counting_loop(epochs, data_dict, initial_triples, subgraph_size, batch_size, appearance, num_candidates)
