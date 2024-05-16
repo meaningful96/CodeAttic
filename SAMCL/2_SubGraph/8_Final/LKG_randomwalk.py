@@ -463,7 +463,7 @@ def Path_Dictionary_for_LKG3(data, appearance, total_appearance, obj, k_steps, n
         subgraph_dict[triple].extend(subgraph)
     
     logger.info("Done Phase: 1")
-    logger.info(f"Number of Centers at Phase 1: {len(center_list)}")       
+    logger.info(f"Number of Centers: {len(center_list)}")       
 
     # 2nd Phase ~
     for phase in range(phases - 1):
