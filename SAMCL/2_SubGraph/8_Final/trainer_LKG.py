@@ -62,7 +62,9 @@ class Trainer:
         self.best_metric = None
         self.batch_size = args.batch_size 
         self.degree_train, self.degree_valid = load_pkl(args.degree_train), load_pkl(args.degree_valid)
-        
+        self.train_loss, self.valid_loss = [], []   
+
+
     def train_loop(self):
         if self.args.use_amp:
             self.scaler = torch.cuda.amp.GradScaler()
@@ -169,7 +171,6 @@ class Trainer:
         top1 = AverageMeter('Acc@1', ':6.2f')
         top3 = AverageMeter('Acc@3', ':6.2f')
         
-        valid_loss = []
 
         batch_size = args.batch_size
         for i, batch_dict in enumerate(self.valid_loader):
@@ -202,8 +203,8 @@ class Trainer:
                        'Acc@3': round(top3.avg, 3),
                        'loss': round(losses.avg, 3)}
         logger.info('Epoch {}, valid metric: {}'.format(epoch, json.dumps(metric_dict)))
-        valid_loss.append(round(losses.avg, 3))
-        print("Valid_loss = {}".format(valid_loss))
+        self.valid_loss.append(round(losses.avg, 3))
+        print("Valid_loss = {}".format(self.valid_loss))
         return metric_dict
     
     def train_epoch(self, epoch):
@@ -217,8 +218,6 @@ class Trainer:
             len(self.train_loader),
             [losses, inv_t, top1, top3],
             prefix="Epoch: [{}]".format(epoch))
-
-        train_loss = []    
 
         for i, batch_dict in enumerate(self.train_loader):
             # switch to train mode
@@ -287,8 +286,8 @@ class Trainer:
                 self._run_eval(epoch=epoch, step=i + 1)
 
         logger.info('Learning rate: {}'.format(self.scheduler.get_last_lr()[0]))
-        train_loss.append(round(losses.avg, 3))
-        print("Train_loss = {}".format(train_loss))
+        self.train_loss.append(round(losses.avg, 3))
+        print("Train_loss = {}".format(self.train_loss))
 
     def _setup_training(self):
         if torch.cuda.device_count() > 1:
