@@ -52,7 +52,7 @@ parser.add_argument('--degree-valid', default='', type=str, metavar='N',
 
 parser.add_argument('--use-link-graph', action='store_true',
                     help='use neighbors from link graph as context')
-parser.add_argument('--eval-every-n-step', default=10000, type=int,
+parser.add_argument('--eval-every-n-step', default=5000, type=int,
                     help='evaluate every n steps')
 parser.add_argument('--additive-margin', default=0.0, type=float, metavar='N',
                     help='additive margin for InfoNCE loss function')
@@ -102,7 +102,7 @@ args = parser.parse_args()
 print(args.train_path)
 assert not args.train_path or os.path.exists(args.train_path)
 assert args.pooling in ['cls', 'mean', 'max']
-assert args.task.lower() in ['wn18rr', 'fb15k237', 'wiki5m_ind', 'wiki5m_trans', 'yago3-10']
+assert args.task.lower() in ['wn18rr', 'fb15k237', 'wiki5m_ind', 'wiki5m_trans', 'yago3-10','umls', 'icews14', 'icews05-15']
 assert args.lr_scheduler in ['linear', 'cosine']
 
 if args.model_dir:

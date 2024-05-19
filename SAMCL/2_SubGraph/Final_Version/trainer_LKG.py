@@ -107,10 +107,6 @@ class Trainer:
             train_dataset = Custom_Dataset(data=train_subgraphs_all)
             valid_dataset = Custom_Dataset(data=valid_subgraphs_all)
                 
-            del train_subgraphs_all
-            del valid_subgraphs_all
-
-            
             self.train_loader = torch.utils.data.DataLoader(
                 train_dataset,
                 batch_size=args.batch_size,
@@ -166,7 +162,7 @@ class Trainer:
     def eval_epoch(self, epoch) -> Dict:
         if not self.valid_loader:
             return {}
-
+        args.validtion = True
         losses = AverageMeter('Loss', ':.4')
         top1 = AverageMeter('Acc@1', ':6.2f')
         top3 = AverageMeter('Acc@3', ':6.2f')
@@ -205,6 +201,7 @@ class Trainer:
         logger.info('Epoch {}, valid metric: {}'.format(epoch, json.dumps(metric_dict)))
         self.valid_loss.append(round(losses.avg, 3))
         print("Valid_loss = {}".format(self.valid_loss))
+        args.validation = False
         return metric_dict
     
     def train_epoch(self, epoch):
@@ -283,7 +280,9 @@ class Trainer:
             if i % self.args.print_freq == 0:
                 progress.display(i)
             if (i + 1) % self.args.eval_every_n_step == 0:
+                args.validation = True
                 self._run_eval(epoch=epoch, step=i + 1)
+                args.validation = False
 
         logger.info('Learning rate: {}'.format(self.scheduler.get_last_lr()[0]))
         self.train_loss.append(round(losses.avg, 3))
@@ -291,7 +290,7 @@ class Trainer:
 
     def _setup_training(self):
         if torch.cuda.device_count() > 1:
-            self.model = torch.nn.DataParallel(self.model, device_ids = [1,2,3,4,5]).to("cuda:1")
+            self.model = torch.nn.DataParallel(self.model, device_ids = [1,0,2,3,4,5]).to("cuda:1")
             # loss_backward = mean_tensor(loss_backward).to(logits.device)
         elif torch.cuda.is_available():
             self.model.cuda()

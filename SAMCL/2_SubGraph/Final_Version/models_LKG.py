@@ -110,7 +110,7 @@ class CustomBertModel(nn.Module, ABC):
             center_triple = tuple(batch_dict['batch_triple'][0])
             st_list = self.st_dict[center_triple]
             st_vector = torch.tensor(st_list).reshape(logits.size(0), 1)
-            st_vector = torch.sqrt(st_vector)
+            # st_vector = torch.sqrt(st_vector)
             st_weight = st_vector.mm(st_vector.t()).to(hr_vector.device)
             st_weight.fill_diagonal_(1)
             st_weight = st_weight.float()
