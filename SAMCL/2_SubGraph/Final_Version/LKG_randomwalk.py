@@ -1,6 +1,9 @@
 from collections import defaultdict, deque
 from typing import List, Dict, Tuple
 from logger_config import logger
+from multiprocessing import Pool
+
+import multiprocessing
 import networkx as nx
 import numpy as np
 import datetime
@@ -37,8 +40,7 @@ def build_nxGraph(path:str):
     logger.info("Done building NetworkX Graph: {}".format(datetime.timedelta(seconds = e - s)))
     return Graph, diGraph, entities
 
-def build_appearance(path:str):
-    data = json.load(open(path, 'r', encoding='utf-8'))
+def build_appearance(data):
     appearance = defaultdict(int)
     for ex in data:
         h,r,t = ex['head_id'], ex['relation'], ex['tail_id'] 
@@ -338,175 +340,85 @@ def Selecting_candidates(nxG, data, select_prob=0.25):
 
     return [{'head_id': ex['head_id'], 'relation': ex['relation'], 'tail_id': ex['tail_id']} for ex in candidates]
     
-
-def process_triple(example, obj, distribution):
-    head_id, relation, tail_id = example['head_id'], example['relation'], example['tail_id']
-    appearance = defaultdict(int)
-    obj.randomwalk_for_sampling(head_id, relation, tail_id, 30, 10, distribution, appearance)
-    return appearance
-
-def process_triple_final(data, example, obj, k_steps, num_iter, distribution, subgraph_size):
+def process_triple(data, example, obj, k_steps, num_iter, distribution, subgraph_size):
     head_id, relation, tail_id = example[0], example[1], example[2]
     subgraph = obj.biased_randomwalk(head_id, relation, tail_id, k_steps, num_iter, distribution, subgraph_size)
     if len(subgraph) < subgraph_size:
-        margin = min(subgraph_size, k_steps * num_iter)
+        margin = min(subgraph_size*2, k_steps * num_iter)
         tmp = random.sample(data, margin)
         tmp = [(ex['head_id'], ex['relation'], ex['tail_id']) for ex in tmp]
         subgraph.extend(tmp)
-    subgraph[0] = (head_id, relation, tail_id) # first triple in the subgraph list must be a center triple 
+    subgraph[0] = example # first triple in the subgraph list must be a center triple 
     subgraph = subgraph[:subgraph_size]
     assert len(subgraph) == subgraph_size
+    assert subgraph[0] == example
 
     return subgraph
 
-def Path_Dictionary_for_LKG1(train_path, obj, distribution, subgraph_size):
-    data = json.load(open(train_path, 'r', encoding='utf-8'))
+def counting(appearance, subgraph):
+    for triple in subgraph:
+        if not triple in appearance:
+            appearance[triple] = 0
+        appearance[triple] += 1
+    return appearance
 
+def process_centers(data, obj, k_steps, num_iter, distribution, subgraph_size, centers, appearance, subgraph_dict):
+    with Pool(processes=4) as pool:
+        results = pool.starmap(process_triple, [(data, center, obj, k_steps, num_iter, distribution, subgraph_size) for center in centers])
+    for subgraph in results:
+        assert len(subgraph) == subgraph_size
+        center = subgraph[0]
+        appearance = counting(appearance, subgraph)
+        subgraph_dict[center].append(subgraph)
+    del results
+    return appearance, subgraph_dict
+
+def Path_Dictionary_for_LKG(data, appearance, obj, k_steps, num_iter, distribution, subgraph_size, phase):
+    logger.info(f"Building Subgraph Dictionary with BRWR!")
     s = time.time()
-    selected_candidates = Selecting_candidates(obj.Graph, data)
-    e = time.time()
-
-    num_candidates = len(data) // subgraph_size
-    
-    logger.info(f"The number of Final Candidates: {num_candidates}")
-    logger.info(f"Time for Selecting: {datetime.timedelta(seconds=e-s)}")
-
-    batch_size = 10000
-    num_batches = (len(selected_candidates) + batch_size - 1) // batch_size
-    logger.info(f"Total Batch in LKG1 Function: {num_batches}")
-
-    pre_appearance = defaultdict(int)
-    cnt = 0
-    logger.info(f"Step 1. Extracting Valuable Center Triples!!")
-    for i in range(num_batches):
-        start_index = i * batch_size
-        end_index = min((i + 1) * batch_size, len(selected_candidates))
-        batch_candidates = selected_candidates[start_index:end_index]
-        logger.info(f"Start Biased Randomwalk with Restart for batch {i+1}!!")
-        s = time.time()
-        for example in batch_candidates:
-            batch_appearance = process_triple(example, obj, distribution)
-            for key, value in batch_appearance.items():
-                pre_appearance[key] += value
-            cnt += 1
-            if cnt % 5000 == 0:
-                logger.info(f"Center Triple Done: {cnt}")
-        logger.info(f"Processed {len(batch_candidates)} triples in batch {i+1}")
-        
-        del batch_candidates
-        gc.collect()
-
-        e = time.time()
-        logger.info(f"Time for Biased Randomwalk with Restart for batch {i+1}: {datetime.timedelta(seconds=e-s)}")   
-    
-    return pre_appearance, data
-
-
-def Path_Dictionary_for_LKG2(data, appearance, obj, k_steps, num_iter, distribution, subgraph_size):
-    logger.info(f"Step 2. Subgraph Sampling with Biased Random Walk with Restart!!")
     subgraph_dict = defaultdict(list)
-    num_candidates = len(data) // subgraph_size
-    s = time.time()
-    sorted_triples = sorted(appearance.items(), key=lambda x: x[1], reverse=True)
-    sorted_triples = [key_value[0] for key_value in sorted_triples]
-    
-    final_candidates = sorted_triples[:num_candidates]
-
-    assert len(final_candidates) == num_candidates
-
-    logger.info(f"Center Triples: {len(final_candidates)}")
-    
+    total_candidates = len(data) // subgraph_size * phase
+    phase_candidates = total_candidates // phase
+    logger.info("Total Phase: {}".format(phase))
+    logger.info("Total number of center tripels: {}".format(total_candidates))
+    logger.info("Center triples per phase: {}".format(phase_candidates))
     cnt = 0
-    for triple in final_candidates:
-        subgraph = process_triple_final(data, triple, obj, k_steps, num_iter, distribution, subgraph_size)
-        subgraph_dict[triple].extend(subgraph)
-        cnt += 1
-        if cnt % 5000 == 0:
+    if phase <= 2:
+        num_candidates = phase_candidates // 4
+
+        centers = random.sample(list(appearance.keys()), num_candidates)
+        appearance, subgraph_dict = process_centers(data, obj, k_steps, num_iter, distribution, subgraph_size, centers, appearance, subgraph_dict)
+        cnt += len(centers)
+        logger.info(f"Done: {cnt}")
+        for _ in range(4*phase - 1):
+            sorted_triples = sorted(appearance.items(), key=lambda x: x[1], reverse=True)
+            centers = [key_value[0] for key_value in sorted_triples[:num_candidates]]
+            appearance, subgraph_dict = process_centers(data, obj, k_steps, num_iter, distribution, subgraph_size, centers, appearance, subgraph_dict)
+            cnt += len(centers)
             logger.info(f"Done: {cnt}")
-    e = time.time()
-    logger.info(f"Done building Subgraph Dictionary: {datetime.timedelta(seconds = e - s)}")
-
-    result = []
-    result.append(subgraph_dict) # Subgraph Dictionary = result[0]
-    result.append(final_candidates) # Center Triples = result[1]
-
-    del subgraph_dict
-    del final_candidates
-
-    return result
-
-def Path_Dictionary_for_LKG3(data, appearance, total_appearance, obj, k_steps, num_iter, distribution, subgraph_size, phases):
-    logger.info(f"Step 2. Subgraph Sampling with Biased Random Walk with Restart!!")
-    subgraph_dict = defaultdict(list)
-    num_candidates = len(data) // subgraph_size
-    s = time.time()
-    sorted_triples = sorted(appearance.items(), key=lambda x: x[1], reverse=True)
-    sorted_triples = [key_value[0] for key_value in sorted_triples]
+        return appearance, subgraph_dict
     
-    final_candidates = sorted_triples[:num_candidates]
-    logger.info(f"Center Triples for 1st Phase: {len(final_candidates)}")
-    cnt = 0
-    
-    center_list = []
-    center_list.extend(final_candidates)
+    elif phase > 2:
+        num_candidates = phase_candidates
+        centers = random.sample(list(appearance.keys()), num_candidates)
+        appearance, subgraph_dict = process_centers(data, obj, k_steps, num_iter, distribution, subgraph_size, centers, appearance, subgraph_dict)
+        cnt += len(centers)
+        logger.info(f"Done: {cnt}")
+        for _ in range(phase - 1):
+            sorted_triples = sorted(appearance.items(), key=lambda x: x[1], reverse=True)
+            centers = [key_value[0] for key_value in sorted_triples[:num_candidates]]
+            appearance, subgraph_dict = process_centers(data, obj, k_steps, num_iter, distribution, subgraph_size, centers, appearance, subgraph_dict)
+            cnt += len(centers)
+            logger.info(f"Done: {cnt}")
+        return appearance, subgraph_dict
 
-    assert len(final_candidates) == num_candidates
-    assert len(center_list) % num_candidates == 0
-
-    # 1st Phase
-    for triple in final_candidates:
-        subgraph = process_triple_final(data, triple, obj, k_steps, num_iter, distribution, subgraph_size)
-
-        for ex in subgraph:
-            total_appearance[ex] += 1
-
-        subgraph_dict[triple].extend(subgraph)
-    
-    logger.info("Done Phase: 1")
-    logger.info(f"Number of Centers: {len(center_list)}")       
-
-    # 2nd Phase ~
-    for phase in range(phases - 1):
-        sorted_triples = sorted(total_appearance.items(), key = lambda x: x[1], reverse=True)
-        sorted_triples = [key_value[0] for key_value in sorted_triples]
-
-        candidates_phase = sorted_triples[:num_candidates]
-
-        assert len(candidates_phase) == num_candidates
-
-        center_list.extend(candidates_phase)
-
-        for triple in candidates_phase:
-            if not triple in subgraph_dict:
-                subgraph = process_triple_final(data, triple, obj, k_steps, num_iter, distribution, subgraph_size)
-                assert len(subgraph) == subgraph_size
-                subgraph_dict[triple].extend(subgraph)
-                for ex in subgraph:
-                    total_appearance[ex] += 1
-            else:
-                subgraph = subgraph_dict[triple]
-                for ex in subgraph:
-                    total_appearance[ex] += 1
-        logger.info(f"Done Phase: {phase + 2}")
-        logger.info(f"Number of Centers: {len(center_list)}")
-    
-    assert len(center_list) == num_candidates*phases
-
-    e = time.time()
-    logger.info(f"Done building Subgraph Dictionary: {datetime.timedelta(seconds = e - s)}")
-
-    result = []
-    result.append(subgraph_dict)
-    result.append(center_list)
-
-    assert len(center_list) == (num_candidates * phases)
-    assert len(list(set(center_list))) == len(list(subgraph_dict.keys()))
-
-    del subgraph_dict
-    del center_list
-
-    return result
-   
+def Making_Subgraph_for_LKG(subgraph_dict, centers):
+    total_subgraph = []
+    for center in centers:
+        total_subgraph.extend(subgraph_dict[center])
+        
+    total_subgraph = [{'head_id': head, 'relation': relation, 'tail_id': tail} for head, relation, tail in total_subgraph]
+    return total_subgraph
 
 def Making_Subgraph_for_LKG(subgraph_dict, centers):
     total_subgraph = []
@@ -519,74 +431,133 @@ def Making_Subgraph_for_LKG(subgraph_dict, centers):
 import os
 import re
 
+
+def get_degree_dict(subgraph_dict, nxGraph, subgraph_size):
+    logger.info("Get DW Dictionary!!")
+    s = time.time()
+    keys = list(subgraph_dict.keys())
+    degree_dict = defaultdict(list)
+    for key in keys:
+        subgraph_list = subgraph_dict[key]
+        for subgraph in subgraph_list:
+            dh_list = []
+            dt_list = []
+            for triple in subgraph:
+                dh = nxGraph.degree(triple[0])
+                dt = nxGraph.degree(triple[2])
+                dh_list.extend([dh, dt])
+                dt_list.extend([dt, dh])
+            assert len(dh_list) == subgraph_size * 2
+            assert len(dt_list) == subgraph_size * 2
+            degree_dict[key].append([dh_list, dt_list])
+    e = time.time()
+    logger.info(f"Time for building DW Dictionary: {datetime.timedelta(seconds=e-s)}")
+    return degree_dict
+
+def get_shortest_distance(nxGraph, center, subgraph_list, subgraph_size):
+    shortest_lists = []
+    for subgraph in subgraph_list:
+        sub_list = list(np.zeros(subgraph_size*2))
+        assert len(sub_list) == subgraph_size*2
+        assert len(subgraph)*2 == len(sub_list)
+
+        head = center[0]
+        for i, triple in enumerate(subgraph):
+            tail = triple[2]
+            try:
+                st = nx.shortest_path_length(nxGraph, source=head, target=tail)
+                if st == 0:
+                    st = 1
+            except nx.NetworkXNoPath:
+                st = 999
+            except nx.NodeNotFound:
+                st = 999
+            sub_list[2*i] = 1/st
+            sub_list[2*i+1] = 1/st
+        shortest_list.append(sub_list)
+    return shortest_lists, center
+
+def get_spw_dict(subgraph_dict, nxGraph, subgraph_size):
+    logger.info("Get SPW Dictionary!!")
+    s = time.time()
+    centers = list(subgraph_dict.keys())
+    total_sw = defaultdict(list)
+
+    with Pool(processes= 8) as pool:
+        results = pool.starmap(get_shortest_distance, [(nxGraph, center, subgraph_dict[center], subgraph_size) for center in centers])
+    for shortest_lists, center in results:
+        total_sw[center] = sub_lists
+    e = time.time()
+
+    del results
+    del centers
+
+    logger.info(f"Time for building SPW Dictionary: {datetime.timedelta(seconds=e-s)}")
+    return total_sw
+
 def main(base_dir, dataset, k_steps, num_iter, distribution, phase, subgraph_size, mode):
-    if phase == 1:
-        ## Step 1
-        s = time.time()
-        data_file = f'{mode}.txt.json'
-        data_path = os.path.join(base_dir, dataset, data_file)
+    ## Step 1. Define the all paths
+    if mode =='valid':
+        num_k_steps = k_steps // 2
+        num_iteration = num_iter // 2
+    elif mode == 'train':
+        num_k_steps = k_steps
+        num_iteration = num_iter
 
-        obj = Biased_RandomWalk(data_path, distribution)
+    s = time.time()
+    data_file = f'{mode}.txt.json'
+    data_path = os.path.join(base_dir, dataset, data_file) 
+    data = json.load(open(data_path, 'r', encoding='utf-8'))
+    logger.info("Data Loading Done!!")
 
-        total_appearance, data = Path_Dictionary_for_LKG1(data_path, obj, distribution, subgraph_size)
+    subgraph_out = os.path.join(base_dir, dataset, f"{mode}_{distribution}_{k_steps}_{num_iter}.pkl")
+    appear_out = os.path.join(base_dir, dataset, f"{mode}_appearance.pkl")
+    degree_out = os.path.join(base_dir, dataset, f"Degree_{mode}.pkl")
+    shortest_out = os.path.join(base_dir, dataset, "ShortestPath_{mode}.pkl")
 
-        pkl_file = f'{mode}_{distribution}_appearance.pkl'
-        pkl_path = os.path.join(base_dir, dataset, pkl_file)
-
-        with open(pkl_path, 'wb') as f:
-            pickle.dump(total_appearance, f)
-        print(f"Counted Appearance Dictionary saved to {pkl_path}")
-        e = time.time()
-        logger.info("Time for building appearance: {}".format(datetime.timedelta(seconds=e-s)))
-
-        ## Step 2
-        Subgraph_List = Path_Dictionary_for_LKG2(data, total_appearance, obj, k_steps, num_iter, distribution, subgraph_size)
-        # Subgraph_List[0] = subgraph_dictionary
-        # Subgraph_List[1] = center_triple_list
-
-        dict_file = f'{mode}_{distribution}_{k_steps}_{num_iter}.pkl'
-        dict_path = os.path.join(base_dir, dataset, dict_file)
-        with open(dict_path, 'wb') as f:
-            pickle.dump(Subgraph_List, f)
-        print(f"BRWR Dictionary saved to {dict_path}")
-
-    else:
-        s = time.time()
-        data_file = f'{mode}.txt.json'
-        data_path = os.path.join(base_dir, dataset, data_file)
-        obj = Biased_RandomWalk(data_path, distribution)
+    ## Step 2. BRWR for extracting subgraphs !!
+    appearance = build_appearance(data) 
+    obj = Biased_RandomWalk(data_path, distribution)
+    total_appearance, subgraph_dict = Path_Dictionary_for_LKG(data, appearance, obj, num_k_steps, num_iteration, distribution, subgraph_size, phase)
+    """
+    subgraph_dict
+    {'center1': [[subgraph1], [subgraph2], [subgraph3], ...]
+     'center2': [[subgraph1], [subgraph2]]
+     'center3': [[subgraph1]]}
+     
+     subgraph = [(h1,r1,t1), (h2,r2,t2), ...]
     
-        data_total = json.load(open(data_path, 'r', encoding='utf-8'))
-        total_appearance = defaultdict(int)
-        for ex in data_total:
-            triple = (ex['head_id'], ex['relation'], ex['tail_id'])
-            total_appearance[triple] = 0
+    """
+    with open(subgraph_out, 'wb') as f:
+        pickle.dump(subgraph_dict, f)
 
-        del data_total
+    with open(appear_out, 'wb') as f:
+        pickle.dump(total_appearance, f)
+    del appearance
+    del total_appearance
 
-        pre_appearance, data = Path_Dictionary_for_LKG1(data_path, obj, distribution, subgraph_size)
+    nxGraph = nx.Graph()
+    for ex in data:
+        nxGraph.add_node(ex['head_id'])
+        nxGraph.add_node(ex['tail_id'])
+        nxGraph.add_edge(ex['head_id'], ex['tail_id'], relation = ex['relation'])
+    del data
 
-        pkl_file = f'{mode}_{distribution}_appearance.pkl'
-        pkl_path = os.path.join(base_dir, dataset, pkl_file)
+    ## Building Degree_weights_dictionary
+    degree_dict = get_degree_dict(subgraph_dict, nxGraph, subgraph_size)
+    with open(degree_out, 'wb') as f:
+        pickle.dump(degree_dict, f)
+    del degree_dict
 
-        with open(pkl_path, 'wb') as f:
-            pickle.dump(pre_appearance, f)
-        print(f"Counted Appearance Dictionary saved to {pkl_path}")
-        print(f"This counting is only for extracting initial center triples.")
-        e = time.time()
-        logger.info("Time for building appearance: {}".format(datetime.timedelta(seconds=e-s)))
-
-        ## Step 2
-        Subgraph_List = Path_Dictionary_for_LKG3(data, pre_appearance, total_appearance, obj, k_steps, num_iter, distribution, subgraph_size, phase)
-        # Subgraph_List[0] = subgraph_dictionary
-        # Subgraph_List[1] = center_triple_list
-
-        dict_file = f'{mode}_{distribution}_{k_steps}_{num_iter}.pkl'
-        dict_path = os.path.join(base_dir, dataset, dict_file)
-        with open(dict_path, 'wb') as f:
-            pickle.dump(Subgraph_List, f)
-        print(f"BRWR Dictionary saved to {dict_path}")
-
+    if mode == 'train':
+        spw_dict = get_spw_dict(subgraph_dict, nxGraph, subgraph_size)
+        with open(shortest_out, 'wb') as f:
+            pickle.dump(shortest_out, f)
+        logger.info("Done building SPW Dictionary!!")
+    logger.info("Done building BRWR Subgraph Dictionary!!")
+    logger.info("Done building DW Dictioanry!!")
+    e = time.time()
+    logger.info(f"Time: {datetime.timedelta(seconds = e - s)}")
         
 
 if __name__ == "__main__":
