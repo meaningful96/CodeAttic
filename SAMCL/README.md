@@ -1,8 +1,8 @@
-#Subgraph-Aware Mini-batching and Contrastive Leaning for Knowledge Graph Completion
+# Subgraph-Aware Training for Knowledge Graph Completion(SATKGC) 
 ## Requirements
-- python ≥ 3.7
+- python ≥ 3.9
 - torch == 1.13.1
-- transformer ≥ 4.15
+- transformer ≥ 4.33.1
 - networkx == 3.2.1
 ```bash
 # Make a virtual space
@@ -11,7 +11,7 @@ conda activate SAMCL
 
 # Install core packages
 pip install torch==1.13.1+cu117 torchvision==0.14.1+cu117 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu117
-pip install transformer==4.15
+pip install transformer==4.33.1
 pip install networkx==3.2.1
 ```
 
@@ -25,8 +25,6 @@ cd BRWR_IP
 # MCMC: Markov Chain Monte-Carlo
 cd MCMC
 ```
-
-
 
 ## Step 2) Data Preprocessing
 
@@ -56,6 +54,8 @@ bash scripts/preprocess.sh wiki5m_ind
 
 ##### WN18RR, FB15k237
 - run `randomwalk.py` (Using multiprocessing)
+- For WN18RR and FB15k-237, only one split needs to be performed for the shortest path weight.
+
 ```bash
 python3 randomwalk.py \
 --base-dir (SAMCL Path)/data \
@@ -75,6 +75,7 @@ python3 randomwalk.py \
 
 ##### Wikidata5M
 - run `LKG_randomwalk.py` (Single core only)
+
 ```bash
 python3 LKG_randomwalk.py \
 --base-dir (SAMCL Path)/data \
@@ -82,7 +83,7 @@ python3 LKG_randomwalk.py \
 --n-iter  300 \
 --dataset wiki5m_ind \
 --distribution antithetical \
---epoch 1 \
+--phase 1 \
 --subgraph-size 512 \
 --mode train
 
@@ -194,11 +195,11 @@ bash scripts/eval_wiki5m_trans.sh ./checkpoint/wiki5m_trans/model_last.mdl
 ```
 
 # Citation
-```bahs
+```bash
 
 
 ```
 
-# Reference
+# Acknowledgement
 This code is based on [SimKGC](https://arxiv.org/abs/2203.02167).  
 
