@@ -1,6 +1,8 @@
-#Codes with Studying
+# Codes with Studying
 1. Data Structures
 2. Algorithm
 3. Pytorch
-4. ML/DL
+4. Deep Learning
+  - ML
+  - DL
 
