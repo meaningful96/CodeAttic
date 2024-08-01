@@ -3,6 +3,6 @@
 - Algorithm
 - Pytorch
 - Deep Learning
-  - ML
-  - DL
+  - ML 
+  - DL 
 
