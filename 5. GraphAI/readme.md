@@ -7,3 +7,5 @@
 | GraphSAGE | [Blog](https://meaningful96.github.io/graph/GraphSAGE/) | [github](https://github.com/meaningful96/CodeAttic/tree/main/5.%20GraphAI/GraphSAGE), [`Jupyter`](https://github.com/meaningful96/CodeAttic/blob/main/5.%20GraphAI/GraphSAGE.ipynb) |
 | GIN | [Blog](https://meaningful96.github.io/graph/GIN/) | [`Jupyter`](https://github.com/meaningful96/CodeAttic/blob/main/5.%20GraphAI/Graph_Isomorphism_Network.ipynb) |
 
+
+# Knnowledge Graph
